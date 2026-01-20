@@ -25,6 +25,8 @@ FastAPI backend and Telegram bot for Solana Agent. The production Telegram bot i
 
 2. Create a `.env` file in the repo root (same level as `pyproject.toml`).
 
+3. Setup a running version of https://github.com/truemagic-coder/solana-agent-cash
+
 3. Configure environment variables (see below).
 
 4. Run the API server (this also starts the Telegram bot).
@@ -49,7 +51,7 @@ Create a `.env` file with the following values. Only the fields you use need to 
 ### Market / Swap APIs
 
 - `BIRDEYE_API_KEY` — Birdeye market data
-- `JUPITER_API_KEY` — Jupiter API key (recommended)
+- `JUPITER_API_KEY` — Jupiter API key
 - `JUPITER_REFERRAL_ULTRA_CODE` — Referral account for Ultra swaps
 - `JUPITER_REFERRAL_TRIGGER_CODE` — Referral account for Trigger/Swap
 
@@ -58,8 +60,8 @@ Create a `.env` file with the following values. Only the fields you use need to 
 - `PRIVY_APP_ID` — Privy application ID
 - `PRIVY_APP_SECRET` — Privy application secret
 - `PRIVY_SIGNING_KEY` — Privy wallet authorization signing key
-- `PRIVY_OWNER_ID` — Privy key quorum ID for wallet creation
-- `PRIVY_PRIVACY_CASH_API_KEY` — Privy Privacy Cash API key
+- `PRIVY_OWNER_ID` — Privy key authorization key for wallet creation (required)
+- `PRIVY_PRIVACY_CASH_API_KEY` — Privy Privacy Cash API key (see https://github.com/truemagic-coder/solana-agent-cash)
 
 ### Auth (Privy JWT verification)
 
@@ -69,10 +71,9 @@ Create a `.env` file with the following values. Only the fields you use need to 
 
 ### Solana / Helius
 
-- `HELIUS_URL` — RPC URL (Helius recommended)
+- `HELIUS_URL` — RPC URL (Helius)
 - `HELIUS_WEBHOOK_SECRET` — Secret used to authenticate webhooks
 - `FEE_PAYER` — Base58 private key (fee payer)
-- `FEE_PAYER_PUBLIC_KEY` — Public key for webhook matching
 
 ### Telegram
 
@@ -103,6 +104,8 @@ Helius transfer notifications are handled at:
 - `POST /webhooks/helius`
 
 Set `HELIUS_WEBHOOK_SECRET` and configure Helius to send that value in the `Authorization` header.
+
+These notfications are for non-private payments - private payment notifications use internal logic.
 
 ---
 
