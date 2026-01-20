@@ -2,9 +2,19 @@
 
 **Solana Privacy Hack (Privacy Payment Track) submission**
 
-This project is built for the Solana Privacy Hack hackathon (https://solana.com/privacyhack) and focuses on private payments using Privacy Cash and Helius. It supports private transfers for the privacy payment flow, including payment links and QR codes, while using Helius as the RPC for privacy payments. For non-private payments, it also integrates Helius webhooks for transfer notifications. A demo video will be added here soon.
+This project is built for the Solana Privacy Hack hackathon (https://solana.com/privacyhack) and focuses on private payments (track) using Privacy Cash, Helius, and Telegram. It uses these technologies to support private transfers for Telegram users that include payment links and QR codes. For non-private payments, it also integrates Helius webhooks for transfer notifications. A demo video will be added here soon.
 
-FastAPI backend and Telegram bot for Solana Agent. The production Telegram bot is deployed at https://t.me/solana_agent_bot.
+It meets all the criteria for the hackathon:
+
+* All code must be open source -> my code is open source (MIT licensed) and built on all open source.
+* Projects must integrate with Solana and use privacy-preserving technologies -> Solana Agent Bot fully integrates with Solana, Helius, and Privacy Cash.
+* All programs must be deployed to Solana devnet or mainnet -> Solana Agent Bot is deployed on mainnet and on Telegram at https://t.me/solana_agent_bot.
+* Submit a demo video (maximum 3 minutes) showcasing your project -> in progress.
+* Include documentation on how to run and use your project -> this README is the documentation
+
+This Telegram bot is also a Solana AI trading copilot with private transfers, private shielding, market data, social sentiment on X, Jupiter swaps, and Jupiter limit orders using self-custody Privy wallets.
+
+The code is a FastAPI backend and Telegram bot for Solana Agent. The production Telegram bot is deployed at https://t.me/solana_agent_bot.
 
 ### What this repo includes
 
@@ -29,7 +39,7 @@ FastAPI backend and Telegram bot for Solana Agent. The production Telegram bot i
 
 2. Create a `.env` file in the repo root (same level as `pyproject.toml`).
 
-3. Setup a running version of https://github.com/truemagic-coder/solana-agent-cash
+3. Setup a running version of Solana Agent Cash -> https://github.com/truemagic-coder/solana-agent-cash
 
 3. Configure environment variables (see below).
 
