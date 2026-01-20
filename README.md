@@ -21,7 +21,7 @@ FastAPI backend and Telegram bot for Solana Agent. The production Telegram bot i
 
 ## Setup
 
-1. `uv install`
+1. `uv sync`
 
 2. Create a `.env` file in the repo root (same level as `pyproject.toml`).
 
@@ -88,7 +88,7 @@ The API server starts the Telegram bot during app startup (see `lifespan` in [so
 
 ### Dev server
 
-- Use the provided script in [dev.sh](dev.sh). It runs Uvicorn with autoreload on port 8080.
+- Use the provided script in [dev.sh](dev.sh). `bash ./dev.sh`. It runs Uvicorn with autoreload on port 8080.
 
 ### Production
 
@@ -108,7 +108,7 @@ Set `HELIUS_WEBHOOK_SECRET` and configure Helius to send that value in the `Auth
 
 ## Tests
 
-Install test dependencies with the `test` extra and run `pytest`.
+Install test dependencies with the `test` extra and run `uv run pytest`.
 
 ---
 
