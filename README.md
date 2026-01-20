@@ -1,4 +1,4 @@
-## Solana Agent API
+## Solana Agent Bot
 
 FastAPI backend and Telegram bot for Solana Agent. The production Telegram bot is deployed at https://t.me/solana_agent_bot.
 
