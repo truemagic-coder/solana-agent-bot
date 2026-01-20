@@ -1,0 +1,26 @@
+{
+  "name": "solana-agent-api",
+  "description": "Solana Agent API with Telegram Bot",
+  "formation": {
+    "web": {
+      "quantity": 1
+    }
+  },
+  "healthchecks": {
+    "web": [
+      {
+        "type": "startup",
+        "name": "web check",
+        "path": "/health",
+        "attempts": 3,
+        "wait": 5,
+        "timeout": 30
+      }
+    ]
+  },
+  "scripts": {
+    "dokku": {
+      "predeploy": "echo 'Stopping old instance first...'"
+    }
+  }
+}
