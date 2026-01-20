@@ -3,42 +3,8 @@ MongoDB models and fee configuration for Solana Agent.
 """
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from nanoid import generate
-
-
-# =============================================================================
-
-
-
-# =============================================================================
-# FEE CONFIGURATION
-# =============================================================================
-
-PLATFORM_FEE = 0.005          # 0.5% flat fee on all trades
-JUPITER_SPLIT = 0.20          # Jupiter takes 20% of fee
-
-
-def calculate_fee_split(volume_usd: float) -> dict:
-    """
-    Calculate the fee split for a trade.
-    
-    Args:
-        volume_usd: Trade volume in USD
-    
-    Returns:
-        Dict with fee breakdown
-    """
-    gross_fee = volume_usd * PLATFORM_FEE
-    jupiter_amount = gross_fee * JUPITER_SPLIT
-    platform_amount = gross_fee - jupiter_amount
-    
-    return {
-        "gross_fee": gross_fee,
-        "jupiter_amount": jupiter_amount,
-        "platform_amount": platform_amount,
-    }
-
 
 # =============================================================================
 # PYDANTIC MODELS (for API validation)
@@ -62,21 +28,6 @@ class UserResponse(BaseModel):
     volume_30d: float = 0.0
     created_at: datetime
     last_trade_at: Optional[datetime] = None
-
-
-class SwapRecord(BaseModel):
-    tx_signature: str
-    user_privy_id: str
-    wallet_address: str
-    input_token: str
-    input_amount: float
-    output_token: str
-    output_amount: float
-    volume_usd: float
-    fee_amount_usd: float
-    jupiter_amount: float
-    platform_amount: float
-    created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class HeliusWebhookPayload(BaseModel):
@@ -134,47 +85,6 @@ def user_document(
         doc["tg_username"] = tg_username
         
     return doc
-
-
-def swap_document(
-    tx_signature: str,
-    user_privy_id: str,
-    wallet_address: str,
-    input_token: str,
-    input_amount: float,
-    output_token: str,
-    output_amount: float,
-    volume_usd: float,
-    fee_split: dict,
-) -> dict:
-    """Create a swap document for MongoDB."""
-    return {
-        "tx_signature": tx_signature,
-        "user_privy_id": user_privy_id,
-        "wallet_address": wallet_address,
-        "input_token": input_token,
-        "input_amount": input_amount,
-        "output_token": output_token,
-        "output_amount": output_amount,
-        "volume_usd": volume_usd,
-        "fee_amount_usd": fee_split["gross_fee"],
-        "jupiter_amount": fee_split["jupiter_amount"],
-        "platform_amount": fee_split["platform_amount"],
-        "created_at": datetime.utcnow(),
-    }
-
-
-def daily_volume_document(
-    user_privy_id: str,
-    date: datetime,
-    volume_usd: float,
-) -> dict:
-    """Create a daily volume document for rolling 30d calculations."""
-    return {
-        "user_privy_id": user_privy_id,
-        "date": date.replace(hour=0, minute=0, second=0, microsecond=0),
-        "volume_usd": volume_usd,
-    }
 
 
 def payment_request_document(

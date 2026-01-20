@@ -3,14 +3,12 @@ Database service for MongoDB operations.
 Handles users and swaps.
 """
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Optional
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 
 from solana_agent_api.models import (
     user_document,
-    swap_document,
-    calculate_fee_split,
 )
 
 logger = logging.getLogger(__name__)
@@ -198,96 +196,6 @@ class DatabaseService:
             user_id=user_id,
             tg_user_id=tg_user_id,
             tg_username=tg_username,
-        )
-
-    # =========================================================================
-    # SWAP OPERATIONS
-    # =========================================================================
-    
-    async def record_swap(
-        self,
-        tx_signature: str,
-        wallet_address: str,
-        input_token: str,
-        input_amount: float,
-        output_token: str,
-        output_amount: float,
-        volume_usd: float,
-    ) -> Optional[dict]:
-        """
-        Record a swap from Helius webhook.
-        Calculates fees and updates user volume.
-        
-        Returns:
-            Swap document if successful, None if duplicate
-        """
-        # Check for duplicate
-        existing = await self.swaps.find_one({"tx_signature": tx_signature})
-        if existing:
-            logger.warning(f"Duplicate swap: {tx_signature}")
-            return None
-        
-        # Get user by wallet
-        user = await self.get_user_by_wallet(wallet_address)
-        if not user:
-            logger.warning(f"Unknown wallet for swap: {wallet_address}")
-            return None
-        
-        # Calculate fees
-        fee_split = calculate_fee_split(volume_usd=volume_usd)
-        
-        # Create swap record
-        swap = swap_document(
-            tx_signature=tx_signature,
-            user_privy_id=user["privy_id"],
-            wallet_address=wallet_address,
-            input_token=input_token,
-            input_amount=input_amount,
-            output_token=output_token,
-            output_amount=output_amount,
-            volume_usd=volume_usd,
-            fee_split=fee_split,
-        )
-        
-        await self.swaps.insert_one(swap)
-        logger.info(f"Recorded swap {tx_signature}: ${volume_usd:.2f}")
-        
-        # Update user's last trade time
-        await self.users.update_one(
-            {"privy_id": user["privy_id"]},
-            {"$set": {"last_trade_at": datetime.utcnow()}}
-        )
-        
-        # Update daily volume
-        await self.update_daily_volume(user["privy_id"], volume_usd)
-        
-        return swap
-    
-    async def update_daily_volume(self, user_privy_id: str, volume_usd: float):
-        """Update daily volume for rolling 30d calculation."""
-        today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
-        
-        await self.daily_volumes.update_one(
-            {"user_privy_id": user_privy_id, "date": today},
-            {"$inc": {"volume_usd": volume_usd}},
-            upsert=True,
-        )
-        
-        # Update user's 30d volume
-        thirty_days_ago = today - timedelta(days=30)
-        pipeline = [
-            {"$match": {
-                "user_privy_id": user_privy_id,
-                "date": {"$gte": thirty_days_ago}
-            }},
-            {"$group": {"_id": None, "total": {"$sum": "$volume_usd"}}}
-        ]
-        result = await self.daily_volumes.aggregate(pipeline).to_list(1)
-        volume_30d = result[0]["total"] if result else 0.0
-        
-        await self.users.update_one(
-            {"privy_id": user_privy_id},
-            {"$set": {"volume_30d": volume_30d}}
         )
 
     # =========================================================================

@@ -31,23 +31,3 @@ async def test_get_or_create_user_updates_missing_fields(db_service):
     assert user["user_id"] == "user-id"
     assert user["tg_user_id"] == 123
     assert user["tg_username"] == "tester"
-
-
-@pytest.mark.asyncio
-async def test_record_swap_updates_volumes(db_service):
-    user = await db_service.create_user("privy-user", wallet_address="WalletF")
-
-    swap = await db_service.record_swap(
-        tx_signature="tx-1",
-        wallet_address="WalletF",
-        input_token="SOL",
-        input_amount=1.0,
-        output_token="USDC",
-        output_amount=20.0,
-        volume_usd=20.0,
-    )
-
-    assert swap is not None
-    updated_user = await db_service.get_user_by_privy_id(user["privy_id"])
-    assert updated_user["last_trade_at"] is not None
-    assert updated_user["volume_30d"] == 20.0

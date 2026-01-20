@@ -2,14 +2,6 @@ from datetime import datetime
 
 from solana_agent_api import models
 
-
-def test_calculate_fee_split():
-    split = models.calculate_fee_split(volume_usd=1000.0)
-    assert split["gross_fee"] == 1000.0 * models.PLATFORM_FEE
-    assert split["jupiter_amount"] == split["gross_fee"] * models.JUPITER_SPLIT
-    assert split["platform_amount"] == split["gross_fee"] - split["jupiter_amount"]
-
-
 def test_user_document_sets_optional_fields():
     doc = models.user_document(
         privy_id="did:privy:test",
