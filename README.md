@@ -111,7 +111,7 @@ These notfications are for non-private payments - private payment notifications 
 
 ## Tests
 
-Install test dependencies with the `test` extra and run `uv run pytest`.
+Install test dependencies with the `uv sync --extra test` and then run with `uv run pytest`.
 
 ---
 
