@@ -1,5 +1,9 @@
 ## Solana Agent Bot
 
+**Solana Privacy Hack (Privacy Payment Track) submission**
+
+This project is built for the Solana Privacy Hack hackathon (https://solana.com/privacyhack) and focuses on private payments using Privacy Cash and Helius. It supports private transfers for the privacy payment flow, including payment links and QR codes, while using Helius as the RPC for privacy payments. For non-private payments, it also integrates Helius webhooks for transfer notifications. A demo video will be added here soon.
+
 FastAPI backend and Telegram bot for Solana Agent. The production Telegram bot is deployed at https://t.me/solana_agent_bot.
 
 ### What this repo includes
