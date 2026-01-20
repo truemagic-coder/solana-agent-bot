@@ -38,19 +38,10 @@ class Config:
     HELIUS_URL = os.getenv("HELIUS_URL")
     HELIUS_WEBHOOK_SECRET = os.getenv("HELIUS_WEBHOOK_SECRET")  # For webhook auth
     FEE_PAYER = os.getenv("FEE_PAYER")  # Private key (base58)
-    FEE_PAYER_PUBLIC_KEY = os.getenv("FEE_PAYER_PUBLIC_KEY")  # Public key for webhook matching
-    
-    # Redis
-    REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
     
     # Telegram
     TELEGRAM_API_ID = int(os.getenv("TELEGRAM_API_ID", "0"))
     TELEGRAM_API_HASH = os.getenv("TELEGRAM_API_HASH")
     TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-    
-    # Web App
-    WEB_APP_URL = os.getenv("WEB_APP_URL", "https://app.solana-agent.com")
-    MY_URL = os.getenv("MY_URL", "https://app.solana-agent.com")
-
 
 config = Config()

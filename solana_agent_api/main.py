@@ -1507,7 +1507,6 @@ for route in app.routes:
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        app_config.MY_URL,
         "https://web.telegram.org",
         "http://web.telegram.org",
     ],
