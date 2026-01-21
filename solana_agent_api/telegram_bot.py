@@ -644,11 +644,19 @@ class TelegramBot:
         user_id = self._get_user_id(tg_user_id)
         
         response = ""
-        async for chunk in self.solana_agent.process(
-            user_id,
-            "[RESPOND_JSON_ONLY] Return a JSON object with: {\"user_id\": \"<privy_did>\", \"wallet_id\": \"<wallet_id>\", \"wallet_address\": \"<address>\", \"welcome_message\": \"<welcome message with swaps gasless note, show wallet address, and fiat on-ramp link using https://sol-pay.co/buy?walletAddress=<address>\"}"
-        ):
-            response += chunk
+        try:
+            async with self.client.action(event.chat_id, 'typing', delay=4):
+                async for chunk in self.solana_agent.process(
+                    user_id,
+                    "[RESPOND_JSON_ONLY] Return a JSON object with: {\"user_id\": \"<privy_did>\", \"wallet_id\": \"<wallet_id>\", \"wallet_address\": \"<address>\", \"welcome_message\": \"<welcome message with swaps gasless note, show wallet address, and fiat on-ramp link using https://sol-pay.co/buy?walletAddress=<address>\"}"
+                ):
+                    response += chunk
+        except Exception:
+            async for chunk in self.solana_agent.process(
+                user_id,
+                "[RESPOND_JSON_ONLY] Return a JSON object with: {\"user_id\": \"<privy_did>\", \"wallet_id\": \"<wallet_id>\", \"wallet_address\": \"<address>\", \"welcome_message\": \"<welcome message with swaps gasless note, show wallet address, and fiat on-ramp link using https://sol-pay.co/buy?walletAddress=<address>\"}"
+            ):
+                response += chunk
         
         # Parse JSON response
         import json
@@ -808,11 +816,19 @@ class TelegramBot:
             return
         
         response = ""
-        async for chunk in self.solana_agent.process(
-            user_id,
-            f"[RESPOND_JSON_ONLY] Use wallet_address '{wallet_address_from_db}'. Return a JSON object with: {{\"wallet_address\": \"<address>\", \"portfolio_text\": \"<full portfolio response with balances and PnL>\"}}"
-        ):
-            response += chunk
+        try:
+            async with self.client.action(event.chat_id, 'typing', delay=4):
+                async for chunk in self.solana_agent.process(
+                    user_id,
+                    f"[RESPOND_JSON_ONLY] Use wallet_address '{wallet_address_from_db}'. Return a JSON object with: {{\"wallet_address\": \"<address>\", \"portfolio_text\": \"<full portfolio response with balances and PnL>\"}}"
+                ):
+                    response += chunk
+        except Exception:
+            async for chunk in self.solana_agent.process(
+                user_id,
+                f"[RESPOND_JSON_ONLY] Use wallet_address '{wallet_address_from_db}'. Return a JSON object with: {{\"wallet_address\": \"<address>\", \"portfolio_text\": \"<full portfolio response with balances and PnL>\"}}"
+            ):
+                response += chunk
         
         # Parse JSON response
         import json
@@ -951,109 +967,112 @@ class TelegramBot:
             return
 
         # Send typing indicator while we process with Agent
-        sender = await event.get_sender()
-        async with self.client.action(sender, 'typing', delay=4):
-            user_id = self._get_user_id(tg_user_id)
+        user_id = self._get_user_id(tg_user_id)
 
-            _, wallet_address = await self._get_wallet_info(tg_user_id)
-            if not wallet_address:
-                await event.reply("❌ Your wallet isn't initialized yet. Run /start to create it.")
-                return
-            
-            # 1. Get Wallet Address and Token Details from Agent in one go
-            # We ask the agent to do the heavy lifting: search token, prices, conversion
-            prompt = (
-                f"[RESPOND_JSON_ONLY] I need to generate a specific payment request for this user input: '{args.strip()}'.\n"
-                f"1. Use the user's wallet address: {wallet_address}.\n"
-                f"2. Identify the token symbol from the input and FIND ITS MINT ADDRESS on Solana (search if needed).\n"
-                f"3. Calculate the token amount:\n"
-                f"   - If input has '$' (e.g. '$5 AGENT'), find the current price and convert USD to token amount.\n"
-                f"   - If input is just numbers (e.g. '100 BONK'), use that as the token amount.\n"
-                f"4. Return ONLY a JSON object (no markdown, no conversation) with these keys:\n"
-                f"   - wallet_address: str\n"
-                f"   - token_mint: str\n"
-                f"   - token_symbol: str (uppercase)\n"
-                f"   - amount: float (the calculated token amount)\n"
-                f"   - usd_value: float (approximate USD value for display)\n"
-            )
-            
-            agent_response = ""
+        _, wallet_address = await self._get_wallet_info(tg_user_id)
+        if not wallet_address:
+            await event.reply("❌ Your wallet isn't initialized yet. Run /start to create it.")
+            return
+        
+        # 1. Get Wallet Address and Token Details from Agent in one go
+        # We ask the agent to do the heavy lifting: search token, prices, conversion
+        prompt = (
+            f"[RESPOND_JSON_ONLY] I need to generate a specific payment request for this user input: '{args.strip()}'.\n"
+            f"1. Use the user's wallet address: {wallet_address}.\n"
+            f"2. Identify the token symbol from the input and FIND ITS MINT ADDRESS on Solana (search if needed).\n"
+            f"3. Calculate the token amount:\n"
+            f"   - If input has '$' (e.g. '$5 AGENT'), find the current price and convert USD to token amount.\n"
+            f"   - If input is just numbers (e.g. '100 BONK'), use that as the token amount.\n"
+            f"4. Return ONLY a JSON object (no markdown, no conversation) with these keys:\n"
+            f"   - wallet_address: str\n"
+            f"   - token_mint: str\n"
+            f"   - token_symbol: str (uppercase)\n"
+            f"   - amount: float (the calculated token amount)\n"
+            f"   - usd_value: float (approximate USD value for display)\n"
+        )
+        
+        agent_response = ""
+        try:
+            async with self.client.action(event.chat_id, 'typing', delay=4):
+                async for chunk in self.solana_agent.process(user_id, prompt):
+                    agent_response += chunk
+        except Exception:
             async for chunk in self.solana_agent.process(user_id, prompt):
                 agent_response += chunk
+        
+        # Clean up response (remove markdown code blocks if present)
+        clean_json = agent_response.replace('```json', '').replace('```', '').strip()
+        
+        try:
+            import json
+            data = json.loads(clean_json)
             
-            # Clean up response (remove markdown code blocks if present)
-            clean_json = agent_response.replace('```json', '').replace('```', '').strip()
+            wallet_address = data.get('wallet_address')
+            token_mint = data.get('token_mint')
+            token_symbol = data.get('token_symbol')
+            amount = data.get('amount')
+            usd_value = data.get('usd_value', 0.0)
             
-            try:
-                import json
-                data = json.loads(clean_json)
+            if not all([wallet_address, token_mint, amount]):
+                raise ValueError("Missing fields in agent response")
                 
-                wallet_address = data.get('wallet_address')
-                token_mint = data.get('token_mint')
-                token_symbol = data.get('token_symbol')
-                amount = data.get('amount')
-                usd_value = data.get('usd_value', 0.0)
-                
-                if not all([wallet_address, token_mint, amount]):
-                    raise ValueError("Missing fields in agent response")
-                    
-                # Format amount nicely (limit decimals)
-                amount_str = f"{amount:.9f}".rstrip('0').rstrip('.')
-                
-            except Exception as e:
-                logger.error(f"Failed to parse agent JSON: {clean_json} - {e}")
-                await event.reply("❌ Couldn't understand the request. Try: /accept $5 USDC")
-                return
+            # Format amount nicely (limit decimals)
+            amount_str = f"{amount:.9f}".rstrip('0').rstrip('.')
+            
+        except Exception as e:
+            logger.error(f"Failed to parse agent JSON: {clean_json} - {e}")
+            await event.reply("❌ Couldn't understand the request. Try: /accept $5 USDC")
+            return
 
-            # Store payment request in DB
-            try:
-                request_id = await self.db.create_payment_request(
-                    wallet_address=wallet_address,
-                    token_mint=token_mint,
-                    token_symbol=token_symbol,
-                    amount=amount,
-                    amount_usd=usd_value
-                )
-            except Exception as e:
-                logger.error(f"Failed to create payment request: {e}")
-                await event.reply("❌ Failed to create payment request.")
-                return
+        # Store payment request in DB
+        try:
+            request_id = await self.db.create_payment_request(
+                wallet_address=wallet_address,
+                token_mint=token_mint,
+                token_symbol=token_symbol,
+                amount=amount,
+                amount_usd=usd_value
+            )
+        except Exception as e:
+            logger.error(f"Failed to create payment request: {e}")
+            await event.reply("❌ Failed to create payment request.")
+            return
 
-            # Build the deep link URL with short ID
-            # Format: https://t.me/{bot_username}?start=pay_{request_id}
-            bot_username = self.bot_username if self.bot_username else "solana_agent_bot"
-            deep_link = f"https://t.me/{bot_username}?start=pay_{request_id}"
-            
-            # Get current user's username for display
-            sender = await event.get_sender()
-            username = getattr(sender, 'username', None)
-            recipient_display = f"@{username}" if username else f"<code>{wallet_address[:8]}...{wallet_address[-4:]}</code>"
-            
-            # Generate QR code
-            qr = segno.make(deep_link)
-            buffer = BytesIO()
-            qr.save(buffer, kind='png', scale=8, border=2)
-            buffer.seek(0)
-            buffer.name = 'qr.png'
-            
-            # Format display string
-            usd_str = f" (~${usd_value:.2f})" if usd_value else ""
-            
-            # Send the QR code
-            caption = (
-                f"💳 <b>Payment Request</b>\n\n"
-                f"<b>Amount:</b> {amount_str} {token_symbol}{usd_str}\n"
-                f"<b>To:</b> {recipient_display}\n\n"
-                f"Scan this QR code or <a href='{deep_link}'>click here to pay</a>"
-            )
-            
-            await event.reply(
-                caption,
-                file=buffer,
-                parse_mode='html'
-            )
-            
-            logger.info(f"Generated accept QR for {tg_user_id}: ${amount} {token_symbol} (ID: {request_id})")
+        # Build the deep link URL with short ID
+        # Format: https://t.me/{bot_username}?start=pay_{request_id}
+        bot_username = self.bot_username if self.bot_username else "solana_agent_bot"
+        deep_link = f"https://t.me/{bot_username}?start=pay_{request_id}"
+        
+        # Get current user's username for display
+        sender = await event.get_sender()
+        username = getattr(sender, 'username', None)
+        recipient_display = f"@{username}" if username else f"<code>{wallet_address[:8]}...{wallet_address[-4:]}</code>"
+        
+        # Generate QR code
+        qr = segno.make(deep_link)
+        buffer = BytesIO()
+        qr.save(buffer, kind='png', scale=8, border=2)
+        buffer.seek(0)
+        buffer.name = 'qr.png'
+        
+        # Format display string
+        usd_str = f" (~${usd_value:.2f})" if usd_value else ""
+        
+        # Send the QR code
+        caption = (
+            f"💳 <b>Payment Request</b>\n\n"
+            f"<b>Amount:</b> {amount_str} {token_symbol}{usd_str}\n"
+            f"<b>To:</b> {recipient_display}\n\n"
+            f"Scan this QR code or <a href='{deep_link}'>click here to pay</a>"
+        )
+        
+        await event.reply(
+            caption,
+            file=buffer,
+            parse_mode='html'
+        )
+        
+        logger.info(f"Generated accept QR for {tg_user_id}: ${amount} {token_symbol} (ID: {request_id})")
 
     async def _handle_transfer(self, event, tg_user_id: int, args: str):
         """Handle /transfer command - send tokens to another wallet or username."""
@@ -1320,6 +1339,8 @@ class TelegramBot:
             self._menu_context[tg_user_id] = context
             return
 
+        # Clear the token selection buttons
+        await event.reply(f"Selected: {token_symbol}", buttons=Button.clear())
         await self._create_private_payment_request(event, tg_user_id, amount, token_symbol)
 
     async def _create_private_payment_request(self, event, tg_user_id: int, amount: float, token_symbol: str):
