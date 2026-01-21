@@ -2,7 +2,7 @@
 
 **Solana Privacy Hack (Privacy Payment Track) submission**
 
-This project is built for the Solana Privacy Hack hackathon (https://solana.com/privacyhack) and focuses on private payments (track) using Privacy Cash, Helius, and Telegram. It supports private transfers for Telegram users that include payment links and QR codes. Only private transfers are enabled by design.
+This project is built for the Solana Privacy Hack hackathon (https://solana.com/privacyhack) and focuses on private payments (track) using Privacy Cash, Helius, and Telegram. It supports private transfers for Telegram users that include payment links and QR codes. Only private transfers & payment requests are allowed - privacy by default.
 
 It meets all the criteria for the hackathon:
 
