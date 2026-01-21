@@ -216,6 +216,66 @@ class TelegramBot:
             )
         except Exception as e:
             logger.error(f"Failed to send private payment notification to {recipient_tg_user_id}: {e}")
+
+    async def send_private_payment_sent_notification(
+        self,
+        payer_tg_user_id: int,
+        amount: float,
+        token_symbol: str,
+        recipient_display: str,
+        usd_value: float = 0.0,
+    ):
+        """Send a confirmation notification to the payer that their private payment was sent."""
+        try:
+            amount_decimal = Decimal(str(amount)) if amount else Decimal("0")
+            amount_str = self._format_decimal(amount_decimal, 9)
+            fees_line, net_line = await self._privacy_cash_fee_lines(amount, token_symbol, usd_value=usd_value)
+            usd_str = f" (~${usd_value:.2f})" if usd_value else ""
+
+            message = (
+                f"✅ <b>Private Payment Sent</b>\n\n"
+                f"<b>To:</b> {recipient_display}\n"
+                f"<b>Amount:</b> {amount_str} {token_symbol}{usd_str}\n"
+                f"{fees_line}\n"
+                f"<b>{net_line}</b>\n"
+                f"\nThis transfer is private and has no public explorer link."
+            )
+
+            await self.client.send_message(payer_tg_user_id, message, parse_mode='html')
+            logger.info(
+                f"Sent private payment sent notification to payer {payer_tg_user_id}"
+            )
+        except Exception as e:
+            logger.error(f"Failed to send private payment sent notification to {payer_tg_user_id}: {e}")
+
+    async def send_payment_sent_notification(
+        self,
+        payer_tg_user_id: int,
+        amount: float,
+        token_symbol: str,
+        recipient_display: str,
+        tx_signature: str,
+        usd_value: float = 0.0,
+    ):
+        """Send a confirmation notification to the payer that their payment was sent (non-private)."""
+        try:
+            amount_str = f"{amount:.9f}".rstrip('0').rstrip('.')
+            usd_str = f" (~${usd_value:.2f})" if usd_value else ""
+
+            explorer_link = f"https://orbmarkets.io/tx/{tx_signature}"
+            message = (
+                f"✅ <b>Payment Sent</b>\n\n"
+                f"<b>To:</b> {recipient_display}\n"
+                f"<b>Amount:</b> {amount_str} {token_symbol}{usd_str}\n\n"
+                f"<a href='{explorer_link}'>View on Explorer</a>"
+            )
+
+            await self.client.send_message(payer_tg_user_id, message, parse_mode='html')
+            logger.info(
+                f"Sent payment sent notification to payer {payer_tg_user_id}"
+            )
+        except Exception as e:
+            logger.error(f"Failed to send payment sent notification to {payer_tg_user_id}: {e}")
     
     async def _handle_message(self, event):
         """Process incoming private messages."""
@@ -1269,6 +1329,20 @@ class TelegramBot:
                     usd_value=usd_value,
                 )
 
+                # Also notify the payer that the payment was sent
+                recipient_username = recipient_user.get('tg_username')
+                if recipient_username:
+                    recipient_display = f"@{recipient_username}"
+                else:
+                    recipient_display = f"<code>{recipient_wallet[:8]}...{recipient_wallet[-4:]}</code>"
+                await self.send_private_payment_sent_notification(
+                    tg_user_id,
+                    amount,
+                    token_symbol,
+                    recipient_display,
+                    usd_value=usd_value,
+                )
+
     async def _handle_private_accept(self, event, tg_user_id: int, args: str, token_override: Optional[str] = None):
         """Handle /private_accept command - create a private payment request message."""
         if not args.strip():
@@ -1544,6 +1618,20 @@ class TelegramBot:
                     amount,
                     token_symbol,
                     sender_display,
+                    usd_value=usd_value,
+                )
+
+                # Also notify the payer that the payment was sent
+                recipient_username = recipient_user.get('tg_username')
+                if recipient_username:
+                    recipient_display = f"@{recipient_username}"
+                else:
+                    recipient_display = f"<code>{recipient_wallet[:8]}...{recipient_wallet[-4:]}</code>"
+                await self.send_private_payment_sent_notification(
+                    tg_user_id,
+                    amount,
+                    token_symbol,
+                    recipient_display,
                     usd_value=usd_value,
                 )
 
