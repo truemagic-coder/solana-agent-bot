@@ -741,13 +741,13 @@ class TelegramBot:
             async with self.client.action(event.chat_id, 'typing', delay=4):
                 async for chunk in self.solana_agent.process(
                     user_id,
-                    "[RESPOND_JSON_ONLY] Return a JSON object with: {\"user_id\": \"<privy_did>\", \"wallet_id\": \"<wallet_id>\", \"wallet_address\": \"<address>\", \"welcome_message\": \"<welcome message with swaps gasless note, show wallet address, and fiat on-ramp link using https://sol-pay.co/buy?walletAddress=<address>\"}"
+                    "[RESPOND_JSON_ONLY] Return a JSON object with: {\"user_id\": \"<privy_did>\", \"wallet_id\": \"<wallet_id (NOT a did:privy:... value)>\", \"wallet_address\": \"<address>\", \"wallet_public_key\": \"<address>\", \"welcome_message\": \"<welcome message with swaps gasless note, show wallet address, and fiat on-ramp link using https://sol-pay.co/buy?walletAddress=<address>\"}"
                 ):
                     response += chunk
         except Exception:
             async for chunk in self.solana_agent.process(
                 user_id,
-                "[RESPOND_JSON_ONLY] Return a JSON object with: {\"user_id\": \"<privy_did>\", \"wallet_id\": \"<wallet_id>\", \"wallet_address\": \"<address>\", \"welcome_message\": \"<welcome message with swaps gasless note, show wallet address, and fiat on-ramp link using https://sol-pay.co/buy?walletAddress=<address>\"}"
+                "[RESPOND_JSON_ONLY] Return a JSON object with: {\"user_id\": \"<privy_did>\", \"wallet_id\": \"<wallet_id (NOT a did:privy:... value)>\", \"wallet_address\": \"<address>\", \"wallet_public_key\": \"<address>\", \"welcome_message\": \"<welcome message with swaps gasless note, show wallet address, and fiat on-ramp link using https://sol-pay.co/buy?walletAddress=<address>\"}"
             ):
                 response += chunk
         
@@ -760,11 +760,22 @@ class TelegramBot:
             user_id = data.get('user_id')
             wallet_id = data.get('wallet_id')
             wallet_address = data.get('wallet_address')
+            wallet_public_key = data.get('wallet_public_key')
             welcome_message = data.get('welcome_message', response)
             
+            # Prefer wallet_public_key if wallet_address is missing
+            if not wallet_address and wallet_public_key:
+                wallet_address = wallet_public_key
+
             # Strip HTML tags from wallet address if present
             if wallet_address:
                 wallet_address = wallet_address.replace('<code>', '').replace('</code>', '').strip()
+
+            # If wallet_id was incorrectly returned as a Privy DID, move it to user_id
+            if wallet_id and wallet_id.startswith("did:privy:"):
+                if not user_id:
+                    user_id = wallet_id
+                wallet_id = None
             
             # Store wallet in database
             if wallet_address:
@@ -1254,14 +1265,25 @@ class TelegramBot:
         user = await self.db.get_user_by_tg_id(tg_user_id)
         if not user:
             return None, None
-        return user.get("wallet_id"), user.get("wallet_address")
+        wallet_id = user.get("wallet_id")
+        wallet_address = user.get("wallet_address")
+        if wallet_id and wallet_id.startswith("did:privy:"):
+            wallet_id = None
+        return wallet_id, wallet_address
 
     async def _get_user_context(self, tg_user_id: int) -> Tuple[Optional[str], Optional[str], Optional[str]]:
         """Fetch stored user_id (Privy DID), wallet_id, and wallet_address for a Telegram user."""
         user = await self.db.get_user_by_tg_id(tg_user_id)
         if not user:
             return None, None, None
-        return user.get("user_id"), user.get("wallet_id"), user.get("wallet_address")
+        user_id = user.get("user_id")
+        wallet_id = user.get("wallet_id")
+        wallet_address = user.get("wallet_address")
+        if wallet_id and wallet_id.startswith("did:privy:"):
+            if not user_id:
+                user_id = wallet_id
+            wallet_id = None
+        return user_id, wallet_id, wallet_address
 
     async def _handle_private_transfer(self, event, tg_user_id: int, args: str):
         """Handle /private_transfer command - private transfer via PrivacyCash."""
@@ -1817,7 +1839,7 @@ class TelegramBot:
         if user_id_from_db or wallet_id or wallet_address:
             message_text = (
                 f"{message_text}\n"
-                f"[APP_CONTEXT] user_id={user_id_from_db or ''} wallet_id={wallet_id or ''} wallet_address={wallet_address or ''}"
+                f"[APP_CONTEXT] user_id={user_id_from_db or ''} wallet_id={wallet_id or ''} wallet_address={wallet_address or ''} wallet_public_key={wallet_address or ''}"
             )
         
         try:

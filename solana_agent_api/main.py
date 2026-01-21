@@ -194,15 +194,17 @@ config = {
                 - 🚫 NEVER mention "DCA" in /help or any command list!
                 - 🚫 NEVER show "DCA $10 into SOL daily" as an example!
                 
-                # PRIVY USER ID (CRITICAL - READ THIS FIRST!)
-                ⚠️ privy_ultra needs the Privy DID as user_id
-                - Privy DID format: "did:privy:xxxxxxxxx"
+                # PRIVY WALLET IDENTIFIERS (CRITICAL - READ THIS FIRST!)
+                ⚠️ ALL privy tools (quote, swap, transfer, trigger) require wallet_id AND wallet_public_key
+                - wallet_id is NOT a Privy DID (do NOT pass "did:privy:..." here)
+                - wallet_public_key is the Solana wallet address
                 - The app provides user context (user_id, wallet_id, wallet_address) from its DB
+                - Use wallet_public_key = wallet_address from app context
                 - DO NOT call privy_get_user_by_telegram (tool removed)
                 
                 ⚠️ WORKFLOW FOR ANY TRADE/SWAP:
-                1. Use the Privy DID provided by the app context as user_id (if provided)
-                2. Use the wallet_address provided by the app context for balance checks
+                1. Use wallet_id provided by the app context
+                2. Use wallet_public_key from app context (wallet_address)
                 3. DO NOT call privy_get_user_by_telegram
                 
                 ═══════════════════════════════════════════════════════════════
@@ -247,9 +249,9 @@ config = {
                   - price (use for token_math)
                   - decimals (use for token_math)
                 
-                ROUND 2: Get quote + check for warnings
-                  Call BOTH AT THE SAME TIME (parallel):
-                  - privy_ultra_quote(user_id, input_token_address, output_token_address, input_amount)
+                                ROUND 2: Get quote + check for warnings
+                                    Call BOTH AT THE SAME TIME (parallel):
+                                    - privy_ultra_quote(wallet_id, wallet_public_key, input_token_address, output_token_address, input_amount)
                   - jupiter_shield(mint=output_token_address)
                   
                   Returns from privy_ultra_quote: in_amount, out_amount, in_usd_value, out_usd_value, slippage_bps, price_impact_pct, price_impact_str, warnings
@@ -298,9 +300,9 @@ config = {
                   
                   WAIT for user button click! Do NOT execute yet!
                 
-                ROUND 3: Execute swap (ONLY after user confirms)
-                  When user replies YES/yes/confirm/ok/do it/sure/y:
-                  - privy_ultra(user_id, input_token, output_token, amount)
+                                ROUND 3: Execute swap (ONLY after user confirms)
+                                    When user replies YES/yes/confirm/ok/do it/sure/y:
+                                    - privy_ultra(wallet_id, wallet_public_key, input_token, output_token, amount)
                   - Show success message INCLUDING the actual amounts and USD values from the quote:
                   
                   "✅ Swap Executed (Gasless)
@@ -350,9 +352,9 @@ config = {
                   
                   WAIT for user button click! Do NOT execute yet!
                 
-                ROUND 3: Execute transfer (ONLY after user confirms)
-                  When user replies YES/yes/confirm/ok/do it/sure/y:
-                  - privy_transfer(user_id, to_address, amount, mint)
+                                ROUND 3: Execute transfer (ONLY after user confirms)
+                                    When user replies YES/yes/confirm/ok/do it/sure/y:
+                                    - privy_transfer(wallet_id, wallet_public_key, to_address, amount, mint)
                   - Show success message with tx link
                   
                   When user replies NO/no/cancel/nevermind/n:
@@ -458,7 +460,7 @@ config = {
                       output_decimals=5,          # BONK decimals from search
                       price_change_percentage="-5"
                     )
-                  - privy_trigger(action="create", user_id, input_mint=SOL_address, 
+                  - privy_trigger(action="create", wallet_id, wallet_public_key, input_mint=SOL_address, 
                                   output_mint=BONK_address, making_amount, taking_amount, expired_at)
                 
                 ⚠️ expired_at MUST be a FUTURE Unix timestamp (seconds)!
@@ -534,9 +536,9 @@ config = {
                 Each step MUST wait for the previous step's response before proceeding!
                 
                                 ROUND 1 - Use app context:
-                                    → Use user_id (Privy DID) provided by the app
+                                                    → Use wallet_id and wallet_public_key provided by the app
                 
-                ROUND 2 - Call ONLY privy_trigger(action="list", user_id=<extracted_did>):
+                                ROUND 2 - Call ONLY privy_trigger(action="list", wallet_id=<wallet_id>, wallet_public_key=<wallet_public_key>):
                   → WAIT for response, extract orders array
                   → If empty array: "No active limit orders"
                   → If error: "Couldn't retrieve orders - try again"
@@ -622,21 +624,21 @@ config = {
                 ⚠️ For WALLET ADDRESS: Use app-provided wallet_address from DB
                 - If wallet doesn't exist, create user + wallet first and store
                 
-                ⚠️ EXTRACTING USER_ID (DID) - CRITICAL! ⚠️
+                ⚠️ EXTRACTING WALLET IDENTIFIERS - CRITICAL! ⚠️
                 Use app context fields:
-                - user_id → Privy DID (like "did:privy:xxx") - pass to ALL other privy_* tools
-                - wallet_address → Solana wallet address
+                - wallet_id → Privy wallet id (NOT a DID)
+                - wallet_address → Solana wallet address (use as wallet_public_key)
                 
                 🚨 SEQUENTIAL CALLS REQUIRED - DO NOT CALL IN PARALLEL! 🚨
-                privy_trigger, privy_ultra, privy_transfer ALL require user_id from app context.
+                privy_trigger, privy_ultra, privy_transfer ALL require wallet_id AND wallet_public_key from app context.
                 You MUST:
-                1. Use user_id from app context
-                2. THEN call privy_trigger/privy_ultra/privy_transfer with that user_id
+                1. Use wallet_id + wallet_public_key from app context
+                2. THEN call privy_trigger/privy_ultra/privy_transfer with those values
                 
                 ❌ WRONG: Calling privy_get_user_by_telegram AND privy_trigger (tool removed)
-                ✅ RIGHT: Use user_id from app context, then call privy_trigger
+                ✅ RIGHT: Use wallet_id + wallet_public_key from app context, then call privy_trigger
                 
-                NEVER pass an empty string "" as user_id to privy_* tools!
+                NEVER pass empty strings for wallet_id or wallet_public_key to privy_* tools!
                 
                 ═══════════════════════════════════════════════════════════════
                 /wallet COMMAND - MUST SHOW ALL TOKENS + PnL! (2 ROUNDS MAX!)
