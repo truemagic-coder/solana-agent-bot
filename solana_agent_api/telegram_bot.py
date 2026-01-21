@@ -1190,8 +1190,13 @@ class TelegramBot:
             "\"usd_value\": <float>}")
 
         response = ""
-        async for chunk in self.solana_agent.process(self._get_user_id(tg_user_id), prompt):
-            response += chunk
+        try:
+            async with self.client.action(event.chat_id, 'typing', delay=4):
+                async for chunk in self.solana_agent.process(self._get_user_id(tg_user_id), prompt):
+                    response += chunk
+        except Exception:
+            async for chunk in self.solana_agent.process(self._get_user_id(tg_user_id), prompt):
+                response += chunk
 
         clean_json = response.replace('```json', '').replace('```', '').strip()
         try:
@@ -1462,8 +1467,13 @@ class TelegramBot:
         )
 
         response = ""
-        async for chunk in self.solana_agent.process(self._get_user_id(tg_user_id), prompt):
-            response += chunk
+        try:
+            async with self.client.action(event.chat_id, 'typing', delay=4):
+                async for chunk in self.solana_agent.process(self._get_user_id(tg_user_id), prompt):
+                    response += chunk
+        except Exception:
+            async for chunk in self.solana_agent.process(self._get_user_id(tg_user_id), prompt):
+                response += chunk
 
         clean_json = response.replace('```json', '').replace('```', '').strip()
         try:
@@ -1669,15 +1679,17 @@ class TelegramBot:
             )
         
         try:
-            # Get the sender entity for typing indicator
-            sender = await event.get_sender()
-            
-            logger.info(f"Starting typing indicator for chat {event.chat_id}, sender {sender.id}")
+            logger.info(f"Starting typing indicator for chat {event.chat_id}")
             
             # Use Telethon's action context manager for typing indicator
             # delay=4 means refresh every 4 seconds (Telegram shows typing for ~5s)
-            async with self.client.action(sender, 'typing', delay=4):
-                # Collect full response from agent
+            try:
+                async with self.client.action(event.chat_id, 'typing', delay=4):
+                    # Collect full response from agent
+                    agent_response = ""
+                    async for chunk in self.solana_agent.process(user_id, message_text):
+                        agent_response += chunk
+            except Exception:
                 agent_response = ""
                 async for chunk in self.solana_agent.process(user_id, message_text):
                     agent_response += chunk
