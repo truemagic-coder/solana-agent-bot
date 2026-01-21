@@ -1,16 +1,24 @@
-## Solana Agent Bot
+# Solana Agent Bot
 
 **Solana Privacy Hack (Privacy Payment Track) submission**
 
-This project is built for the Solana Privacy Hack hackathon (https://solana.com/privacyhack) and focuses on private payments (track) using Privacy Cash, Helius, and Telegram. It uses these technologies to support private transfers for Telegram users that include payment links and QR codes. For non-private payments, it also integrates Helius webhooks for transfer notifications. A demo video will be added here soon.
+This project is built for the Solana Privacy Hack hackathon (https://solana.com/privacyhack) and focuses on private payments (track) using Privacy Cash, Helius, and Telegram. It uses these technologies to support private transfers for Telegram users that include payment links and QR codes. For non-private payments, it also integrates Helius webhooks for transfer notifications. A demo video is below.
 
 It meets all the criteria for the hackathon:
 
 * All code must be open source -> my code is open source (MIT licensed) and built on all open source.
 * Projects must integrate with Solana and use privacy-preserving technologies -> Solana Agent Bot fully integrates with Solana, Helius, and Privacy Cash.
 * All programs must be deployed to Solana devnet or mainnet -> Solana Agent Bot is deployed on mainnet and on Telegram at https://t.me/solana_agent_bot.
-* Submit a demo video (maximum 3 minutes) showcasing your project -> in progress.
+* Submit a demo video (maximum 3 minutes) showcasing your project -> see below.
 * Include documentation on how to run and use your project -> this README is the documentation
+
+## Demo Video
+
+
+https://github.com/user-attachments/assets/9afc7c52-c1aa-4a6d-a9be-c14d17d28ed3
+
+
+
 
 This Telegram bot is also a Solana AI trading copilot with private transfers, private shielding, market data, social sentiment on X, Jupiter swaps, and Jupiter limit orders using self-custody Privy wallets.
 
