@@ -2,7 +2,7 @@
 
 **Solana Privacy Hack (Privacy Payment Track) submission**
 
-This project is built for the Solana Privacy Hack hackathon (https://solana.com/privacyhack) and focuses on private payments (track) using Privacy Cash and Telegram. It supports private transfers for Telegram users that include payment links and QR codes. Non-private transfers are disabled by design.
+This project is built for the Solana Privacy Hack hackathon (https://solana.com/privacyhack) and focuses on private payments (track) using Privacy Cash, Helius, and Telegram. It supports private transfers for Telegram users that include payment links and QR codes. Only private transfers are enabled by design.
 
 It meets all the criteria for the hackathon:
 
@@ -18,7 +18,7 @@ It meets all the criteria for the hackathon:
 * Visit https://t.me/solana_agent_bot and run command start - you will be assigned a self-custody wallet
 * Transfer either SOL or USDC into your wallet from another wallet or by buying and swapping $AGENT
 * Bring up the menu by clicking it or saying `/menu`
-* Click `wallet` and then `privacy` and then `transfer` and specify the token (SOL or USDC), the amount, and the payee (must have a wallet on Solana Agent Bot)
+* Click `wallet` and then click `transfer` and specify the token (SOL or USDC), the amount, and the payee (TG user with wallet on Solana Agent Bot) or external address
 * The transfer should succeed and you (the payer) and the payee will be notified by the bot
 
 ## Demo Video

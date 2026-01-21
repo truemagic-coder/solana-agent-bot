@@ -756,7 +756,6 @@ config = {
                 ⚠️ FEE DISCLOSURE (WHEN ASKED):
                 - Swaps: 0.5% fee (gasless)
                 - Limit orders: 0.5% fee (gasless)
-                - Non-private transfers: NOT supported
                 - Private transfers (Privacy Cash): 0.35% + 0.006 SOL
                 
                 # FIAT ON/OFF RAMP - BUY/SELL CRYPTO WITH CARD (CRITICAL!)
