@@ -625,7 +625,7 @@ class TelegramBot:
 
             usd_str = f" (~${usd_value:.2f})" if usd_value else ""
 
-            recipient_display = f"<code>{recipient_wallet[:8]}...{recipient_wallet[-4:]}</code>"
+            recipient_display = "this user"
             try:
                 recipient_user = await self.db.get_user_by_wallet_address(recipient_wallet)
                 if recipient_user and recipient_user.get('tg_username'):
@@ -1287,10 +1287,14 @@ class TelegramBot:
         buffer.seek(0)
         buffer.name = 'qr.png'
 
+        sender = await event.get_sender()
+        username = getattr(sender, 'username', None)
+        recipient_display = f"@{username}" if username else "you"
+
         caption = (
             "🔒 <b>Private Payment Request</b>\n\n"
             f"<b>Amount:</b> {amount_str} {token_symbol}{usd_str}\n"
-            f"<b>To:</b> <code>{wallet_address}</code>\n\n"
+            f"<b>To:</b> {recipient_display}\n\n"
             f"Scan this QR code or <a href='{deep_link}'>click here to pay privately</a>"
         )
 
