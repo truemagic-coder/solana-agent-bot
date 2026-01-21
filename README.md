@@ -2,7 +2,7 @@
 
 **Solana Privacy Hack (Privacy Payment Track) submission**
 
-This project is built for the Solana Privacy Hack hackathon (https://solana.com/privacyhack) and focuses on private payments (track) using Privacy Cash, Helius, and Telegram. It uses these technologies to support private transfers for Telegram users that include payment links and QR codes. For non-private payments, it also integrates Helius webhooks for transfer notifications. A demo video is below.
+This project is built for the Solana Privacy Hack hackathon (https://solana.com/privacyhack) and focuses on private payments (track) using Privacy Cash and Telegram. It supports private transfers for Telegram users that include payment links and QR codes. Non-private transfers are disabled by design.
 
 It meets all the criteria for the hackathon:
 
@@ -18,7 +18,7 @@ It meets all the criteria for the hackathon:
 * Visit https://t.me/solana_agent_bot and run command start - you will be assigned a self-custody wallet
 * Transfer either SOL or USDC into your wallet from another wallet or by buying and swapping $AGENT
 * Bring up the menu by clicking it or saying `/menu`
-* Click `wallet` and then `privacy` and then `private transfer` and specify the token (SOL or USDC) the token amount and payee (must have a wallet on Solana Agent Bot)
+* Click `wallet` and then `privacy` and then `transfer` and specify the token (SOL or USDC), the amount, and the payee (must have a wallet on Solana Agent Bot)
 * The transfer should succeed and you (the payer) and the payee will be notified by the bot
 
 ## Demo Video
@@ -38,7 +38,7 @@ The code is a FastAPI backend and Telegram bot for Solana Agent. The production 
 - FastAPI API server
 - Telegram bot (Telethon) that runs alongside the API
 - MongoDB persistence
-- Helius webhook endpoint for transfer notifications
+- Telegram private payment requests and notifications
 
 ---
 
@@ -103,7 +103,6 @@ Create a `.env` file with the following values. Only the fields you use need to 
 ### Solana / Helius
 
 - `HELIUS_URL` — RPC URL (Helius)
-- `HELIUS_WEBHOOK_SECRET` — Secret used to authenticate webhooks
 - `FEE_PAYER` — Base58 private key (fee payer)
 
 ### Telegram
@@ -130,13 +129,7 @@ The API server starts the Telegram bot during app startup (see `lifespan` in [so
 
 ## Webhooks
 
-Helius transfer notifications are handled at:
-
-- `POST /webhooks/helius`
-
-Set `HELIUS_WEBHOOK_SECRET` and configure Helius to send that value in the `Authorization` header.
-
-These notfications are for non-private payments - private payment notifications use internal logic.
+This project does not expose webhooks.
 
 ---
 

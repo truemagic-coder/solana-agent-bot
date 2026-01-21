@@ -4,7 +4,7 @@ import asyncio
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List
 
-from fastapi import FastAPI, Header, WebSocket, WebSocketDisconnect, Depends, HTTPException, status, Request
+from fastapi import FastAPI, Header, WebSocket, WebSocketDisconnect, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 import jwt
 from pydantic import BaseModel
@@ -77,13 +77,6 @@ config = {
             "grok_web_search": False, # Optional, defaults to False - enable Grok web search capability
             "grok_x_search": True, # Optional, defaults to True - enable Grok X search capability
             "grok_timeout": 120, # Optional, defaults to 15 seconds - timeout for Grok searches
-        },
-        "privy_transfer": {
-            "app_id": app_config.PRIVY_APP_ID, # Required - your Privy application ID
-            "app_secret": app_config.PRIVY_APP_SECRET, # Required - your Privy application secret
-            "signing_key": app_config.PRIVY_SIGNING_KEY, # Required - your Privy wallet authorization signing key
-            "rpc_url": app_config.HELIUS_URL, # Required - your RPC URL - Helius is recommended
-            "fee_payer": app_config.FEE_PAYER, # Required - base58 private key for the fee payer wallet
         },
         "jupiter_shield": {
             "jupiter_api_key": app_config.JUPITER_API_KEY, # Optional - get free key at jup.ag for higher rate limits
@@ -185,7 +178,8 @@ config = {
                 - Token safety checks and analysis
                 - Swaps via Jupiter (0.5% fee) - GASLESS!
                 - Limit orders via Jupiter Trigger (0.5% fee) - GASLESS!
-                - Wallet balances and non-private transfers are FREE (gasless)
+                - Wallet balances (gasless)
+                - Private transfers via Privacy Cash (SOL/USDC)
                 - X/Twitter search for trending tokens and news
                 
                 ⚠️ NOT SUPPORTED:
@@ -195,7 +189,8 @@ config = {
                 - 🚫 NEVER show "DCA $10 into SOL daily" as an example!
                 
                 # PRIVY WALLET IDENTIFIERS (CRITICAL - READ THIS FIRST!)
-                ⚠️ ALL privy tools (quote, swap, transfer, trigger) require wallet_id AND wallet_public_key
+                ⚠️ privy_ultra_quote/privy_ultra/privy_trigger require wallet_id AND wallet_public_key
+                ⚠️ privy_privacy_cash requires wallet_id
                 - wallet_id is NOT a Privy DID (do NOT pass "did:privy:..." here)
                 - wallet_public_key is the Solana wallet address
                 - The app provides user context (user_id, wallet_id, wallet_address) from its DB
@@ -216,7 +211,6 @@ config = {
                 
                 token_math actions:
                 - "swap": For privy_ultra - returns smallest_units from USD amount
-                - "transfer": For privy_transfer - returns human-readable amount from USD
                 - "limit_order": For privy_trigger create - returns making_amount AND taking_amount
                     Params: usd_amount, input_price_usd, input_decimals, output_price_usd, output_decimals, price_change_percentage
                     price_change_percentage: "-0.5" = buy 0.5% lower (dip), "10" = sell 10% higher
@@ -322,46 +316,11 @@ config = {
                 
                 ⚠️ CONFIRMATION IS REQUIRED! Never execute without user saying YES!
                 
-                ═══════════════════════════════════════════════════════════════
-                TRANSFER WORKFLOW (privy_transfer) - ONLY 2 ROUNDS!
-                ═══════════════════════════════════════════════════════════════
-                
-                ⛔ CRITICAL: NEVER TYPE A TOKEN ADDRESS YOURSELF!
-                ⛔ YOU MUST CALL birdeye(action="search") FOR EVERY TOKEN!
-                ⛔ ONLY USE SOLANA TOKENS! If address starts with "0x" = WRONG CHAIN!
-                
-                birdeye search returns: address, price, decimals - ALL YOU NEED!
-                
-                ROUND 1 (ALL PARALLEL):
-                  - birdeye(action="search", keyword="<TOKEN>") ← MANDATORY!
-                
-                From search result, extract: address, price
-                
-                ROUND 2: Calculate amount + ASK FOR CONFIRMATION
-                  - token_math(action="transfer", usd_amount, token_price_usd)
-                  - Then STOP and show confirmation message:
-                  
-                  "📤 Transfer Preview (Gasless):
-                   Sending: X.XX <TOKEN> (~$X.XX)
-                   To: `<destination_address>`"
-                  
-                  ⚠️ DO NOT ASK FOR TEXT INPUT! Use buttons instead:
-                  Send inline buttons below the preview:
-                  - ✅ YES (confirms transfer)
-                  - ❌ NO (cancels transfer)
-                  
-                  WAIT for user button click! Do NOT execute yet!
-                
-                                ROUND 3: Execute transfer (ONLY after user confirms)
-                                    When user replies YES/yes/confirm/ok/do it/sure/y:
-                                    - privy_transfer(wallet_id, wallet_public_key, to_address, amount, mint)
-                  - Show success message with tx link
-                  
-                  When user replies NO/no/cancel/nevermind/n:
-                  - Respond "Transfer cancelled." and do NOT execute.
-                
-                ⚠️ privy_transfer takes HUMAN-READABLE amounts, NOT smallest units!
-                ⚠️ CONFIRMATION IS REQUIRED! Never execute without user saying YES!
+                                ═══════════════════════════════════════════════════════════════
+                                NON-PRIVATE TRANSFERS ARE DISABLED
+                                ═══════════════════════════════════════════════════════════════
+                                - Only Privacy Cash transfers are supported (SOL/USDC).
+                                - Do NOT use any non-private transfer tool.
 
                 ═══════════════════════════════════════════════════════════════
                 PRIVACY CASH WORKFLOW (privy_privacy_cash) - PRIVATE TRANSFERS
@@ -378,14 +337,14 @@ config = {
                 - fees: Privacy Cash charges 0.35% + 0.006 SOL for private transfers
 
                 PRIVATE TRANSFER (action="transfer"):
-                - Use when user says: "private transfer", "send privately", "privacy cash transfer"
+                - Use when user says: "transfer", "send", "private transfer", "send privately", "privacy cash transfer"
                 - If the user asks about fees, clearly state: 0.35% + 0.006 SOL (Privacy Cash fee)
                 - This is a private transfer (no public tx link). DO NOT claim an on-chain tx.
                 - Call privy_privacy_cash with action=transfer
 
                 PRIVATE ACCEPT (request to receive privately):
-                - If user says "private accept", help them request a private payment.
-                - Provide their wallet address and a ready-to-send instruction (e.g., "private transfer X SOL to <address>").
+                - If user says "accept" or "private accept", help them request a private payment.
+                - Provide their wallet address and a ready-to-send instruction (e.g., "transfer X SOL to <address>").
                 - Do NOT fabricate tx signatures or links.
 
                 SHIELD DEPOSIT (action="deposit"):
@@ -616,11 +575,11 @@ config = {
                 - Error response ≠ empty list! Only empty list = no orders.
                 
 ═══════════════════════════════════════════════════════════════
-                ⚠️ TRANSFER vs SWAP - KNOW THE DIFFERENCE!
+                ⚠️ PRIVATE TRANSFER vs SWAP - KNOW THE DIFFERENCE!
                 ═══════════════════════════════════════════════════════════════
                 
-                - "send X to ADDRESS" = TRANSFER (privy_transfer) - sends to another wallet
-                - "swap X for Y" = SWAP (privy_ultra) - exchanges tokens
+                - "send X to ADDRESS" = PRIVATE TRANSFER (privy_privacy_cash)
+                - "swap X for Y" = SWAP (privy_ultra)
                 - NEVER confuse these!
                 
                 ⚠️ For WALLET ADDRESS: Use app-provided wallet_address from DB
@@ -632,10 +591,10 @@ config = {
                 - wallet_address → Solana wallet address (use as wallet_public_key)
                 
                 🚨 SEQUENTIAL CALLS REQUIRED - DO NOT CALL IN PARALLEL! 🚨
-                privy_trigger, privy_ultra, privy_transfer ALL require wallet_id AND wallet_public_key from app context.
+                privy_trigger and privy_ultra require wallet_id AND wallet_public_key from app context.
                 You MUST:
                 1. Use wallet_id + wallet_public_key from app context
-                2. THEN call privy_trigger/privy_ultra/privy_transfer with those values
+                2. THEN call privy_trigger/privy_ultra with those values
                 
                 ❌ WRONG: Calling privy_get_user_by_telegram AND privy_trigger (tool removed)
                 ✅ RIGHT: Use wallet_id + wallet_public_key from app context, then call privy_trigger
@@ -797,7 +756,7 @@ config = {
                 ⚠️ FEE DISCLOSURE (WHEN ASKED):
                 - Swaps: 0.5% fee (gasless)
                 - Limit orders: 0.5% fee (gasless)
-                - Non-private transfers: FREE (gasless)
+                - Non-private transfers: NOT supported
                 - Private transfers (Privacy Cash): 0.35% + 0.006 SOL
                 
                 # FIAT ON/OFF RAMP - BUY/SELL CRYPTO WITH CARD (CRITICAL!)
@@ -1292,7 +1251,7 @@ config = {
                 BE HONEST ABOUT LIMITATIONS. Users respect honesty over fake confidence.
             """,
             "specialization": "Solana AI Trading Copilot for Telegram",
-            "tools": ["token_math", "technical_analysis", "search_internet", "birdeye", "privy_privacy_cash", "privy_transfer", "privy_trigger", "privy_ultra_quote", "privy_ultra", "jupiter_shield", "privy_create_user", "privy_create_wallet"]
+            "tools": ["token_math", "technical_analysis", "search_internet", "birdeye", "privy_privacy_cash", "privy_trigger", "privy_ultra_quote", "privy_ultra", "jupiter_shield", "privy_create_user", "privy_create_wallet"]
         }
     ]
 }
@@ -1344,168 +1303,6 @@ app = FastAPI(lifespan=lifespan)
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
-
-# Helius webhook for transfer notifications
-@app.post("/webhooks/helius")
-async def helius_webhook(request: Request, authorization: str = Header(None)):
-    """
-    Handle Helius webhook for transfer events.
-    Only processes TRANSFER transactions to notify users of incoming payments.
-    """
-    # Verify authorization header
-    if authorization != app_config.HELIUS_WEBHOOK_SECRET:
-        logger.warning("Invalid Helius webhook authorization")
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    
-    try:
-        payload = await request.json()
-        transactions = payload if isinstance(payload, list) else [payload]
-        
-        # Process transfers in background to avoid timeout
-        asyncio.create_task(_process_transfers_async(transactions))
-        
-        return {"status": "ok", "received": len(transactions)}
-    except Exception as e:
-        logger.error(f"Error processing Helius webhook: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-async def _process_transfers_async(transactions: list):
-    """Process transfer transactions in background."""
-    try:
-        for tx in transactions:
-            try:
-                tx_type = tx.get("type")
-                
-                # Only process TRANSFER transactions
-                if tx_type == "TRANSFER":
-                    await _process_transfer_event(tx)
-            except Exception as e:
-                logger.error(f"Error processing transaction: {e}")
-                continue
-    except Exception as e:
-        logger.error(f"Error in background transfer processing: {e}")
-
-
-async def _process_transfer_event(tx: dict):
-    """Process a TRANSFER transaction from Helius webhook."""
-    try:
-        tx_signature = tx.get("signature")
-        logger.info(f"Processing transfer: {tx_signature}")
-        
-        # Get transfer details
-        token_transfers = tx.get("tokenTransfers", [])
-        native_transfers = tx.get("nativeTransfers", [])
-        
-        # Collect all recipient addresses
-        recipients = set()
-        for t in token_transfers:
-            if t.get("toUserAccount"):
-                recipients.add(t.get("toUserAccount"))
-        for t in native_transfers:
-            if t.get("toUserAccount"):
-                recipients.add(t.get("toUserAccount"))
-        
-        if not recipients:
-            return
-        
-        # Check which recipients are our users and send notifications
-        for recipient in recipients:
-            user = await db_service.get_user_by_wallet_address(recipient)
-            if user:
-                await _handle_incoming_transfer(tx, user, recipient, token_transfers, native_transfers)
-                
-    except Exception as e:
-        logger.error(f"Error processing transfer event: {e}")
-
-
-async def _handle_incoming_transfer(tx: dict, user: dict, recipient_address: str, token_transfers: list, native_transfers: list):
-    """Send payment notification for incoming transfer (only from other users, not swaps/programs)."""
-    try:
-        tx_signature = tx.get("signature")
-        
-        # Determine what was transferred
-        amount = 0.0
-        token_symbol = "UNKNOWN"
-        sender = "Unknown"
-        
-        # Check native transfers (SOL)
-        for t in native_transfers:
-            if t.get("toUserAccount") == recipient_address:
-                raw_amount = t.get("amount", 0)
-                amount = raw_amount / 1e9  # Convert lamports to SOL
-                token_symbol = "SOL"
-                sender = t.get("fromUserAccount", "Unknown")
-                break
-        
-        # Check token transfers if no SOL found
-        if amount == 0:
-            for t in token_transfers:
-                if t.get("toUserAccount") == recipient_address:
-                    raw_amount = t.get("tokenAmount", 0)
-                    amount = raw_amount
-                    token_mint = t.get("mint", "")
-                    token_symbol = t.get("tokenSymbol", "")
-                    sender = t.get("fromUserAccount", "Unknown")
-                    
-                    # If no symbol from Helius, ask agent to look it up
-                    if not token_symbol and token_mint:
-                        try:
-                            logger.info(f"Looking up token symbol for mint {token_mint}...")
-                            symbol_response = ""
-                            async for chunk in solana_agent.process(
-                                "system",
-                                f"[RESPOND_JSON_ONLY] Get the token symbol for this Solana mint address: {token_mint}. Return JSON: {{\"symbol\": \"<SYMBOL>\"}}"
-                            ):
-                                symbol_response += chunk
-                            
-                            # Parse response
-                            import json
-                            clean_json = symbol_response.replace('```json', '').replace('```', '').strip()
-                            data = json.loads(clean_json)
-                            token_symbol = data.get("symbol", "").upper()
-                            
-                            if token_symbol:
-                                logger.info(f"Found token symbol: {token_symbol}")
-                            else:
-                                token_symbol = f"{token_mint[:4]}...{token_mint[-4:]}"
-                                logger.warning(f"Agent could not find symbol for {token_mint}")
-                        except Exception as e:
-                            logger.error(f"Failed to lookup token symbol: {e}")
-                            token_symbol = f"{token_mint[:4]}...{token_mint[-4:]}"
-                    
-                    if not token_symbol:
-                        token_symbol = "TOKEN"
-                        logger.warning(f"Could not determine token symbol for transfer {tx_signature}")
-                    
-                    logger.debug(f"Token transfer: {amount} {token_symbol} from {sender}")
-                    break
-        
-        if amount <= 0:
-            return
-        
-        # ⚠️ CRITICAL: Check if sender is an actual USER (not a program/contract)
-        # If sender is NOT in our database, this is likely a swap or program interaction
-        # Only send notifications for PEER-TO-PEER transfers (user to user)
-        sender_user = await db_service.get_user_by_wallet_address(sender)
-        if not sender_user:
-            logger.info(f"Skipping transfer notification: sender {sender[:8]}... is not a known user (likely swap/program interaction)")
-            return
-        
-        # Send notification to user
-        if telegram_bot:
-            await telegram_bot.send_payment_notification(
-                user_id=user.get('privy_id'),
-                amount=amount,
-                token_symbol=token_symbol,
-                sender_address=sender,
-                tx_signature=tx_signature,
-                usd_value=0.0
-            )
-            logger.info(f"Sent payment notification to {user.get('tg_user_id')}: {amount} {token_symbol} from {sender}")
-    except Exception as e:
-        logger.error(f"Error handling incoming transfer: {e}")
-
 
 logger.info("Routes registered:")
 for route in app.routes:

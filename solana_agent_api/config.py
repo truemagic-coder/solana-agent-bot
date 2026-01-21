@@ -36,7 +36,6 @@ class Config:
     
     # Solana / Helius
     HELIUS_URL = os.getenv("HELIUS_URL")
-    HELIUS_WEBHOOK_SECRET = os.getenv("HELIUS_WEBHOOK_SECRET")  # For webhook auth
     FEE_PAYER = os.getenv("FEE_PAYER")  # Private key (base58)
     
     # Telegram

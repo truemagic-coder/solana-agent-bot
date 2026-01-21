@@ -340,10 +340,10 @@ class TelegramBot:
                 await self._handle_lookup(event, tg_user_id, message_text)
                 return
             elif awaiting == 'transfer':
-                await self._handle_transfer(event, tg_user_id, message_text)
+                await self._handle_private_transfer(event, tg_user_id, message_text)
                 return
             elif awaiting == 'accept':
-                await self._handle_accept(event, tg_user_id, message_text)
+                await self._handle_private_accept(event, tg_user_id, message_text)
                 return
             elif awaiting == 'private_transfer':
                 await self._handle_private_transfer(event, tg_user_id, message_text)
@@ -376,29 +376,9 @@ class TelegramBot:
                 self._menu_context[tg_user_id] = context
                 return
             elif awaiting == 'pay_confirm':
-                request_id = context.get('request_id')
-                recipient_wallet = context.get('recipient_wallet')
-                amount = context.get('amount')
-                token_symbol = context.get('token_symbol')
-                if message_text.lower() in ("pay", "✅ pay") or message_text.startswith("✅ Pay"):
-                    if not recipient_wallet or not amount or not token_symbol:
-                        await event.reply("⚠️ Payment details missing.", buttons=Button.clear())
-                        await self._show_main_menu(event)
-                        return
-                    # Execute the transfer via agent
-                    await self._process_agent_message(
-                        event,
-                        tg_user_id,
-                        f"Transfer {amount} {token_symbol} to {recipient_wallet}"
-                    )
-                    return
-                if message_text.lower() in ("cancel", "❌ cancel"):
-                    self._menu_context.pop(tg_user_id, None)
-                    await event.reply("Payment cancelled.", buttons=Button.clear())
-                    await self._show_main_menu(event)
-                    return
-                await event.reply("Please confirm by tapping ✅ Pay or reply with 'pay'.")
-                self._menu_context[tg_user_id] = context
+                self._menu_context.pop(tg_user_id, None)
+                await event.reply("⚠️ Non-private payments are disabled. Use private payment requests instead.", buttons=Button.clear())
+                await self._show_main_menu(event)
                 return
             elif awaiting == 'shield_deposit':
                 await self._handle_shield_deposit(event, tg_user_id, message_text)
@@ -414,6 +394,10 @@ class TelegramBot:
         lowered = message_text.lower()
         if lowered.startswith('private transfer'):
             args = message_text[len('private transfer'):].strip()
+            await self._handle_private_transfer(event, tg_user_id, args)
+            return
+        if lowered.startswith('transfer '):
+            args = message_text[len('transfer'):].strip()
             await self._handle_private_transfer(event, tg_user_id, args)
             return
         if lowered.startswith('private accept'):
@@ -501,13 +485,13 @@ class TelegramBot:
         elif message_text == "💼 Portfolio":
             await self._handle_wallet(event, tg_user_id)
             return True
-        elif message_text == "💸 Send Tokens":
-            await event.reply("📌 Tell me what you'd like to send:\n\nExample: Transfer 0.1 SOL to @username or to wallet address")
-            self._menu_context[tg_user_id] = {'awaiting_input': 'transfer'}
+        elif message_text == "🔒 Transfer":
+            await event.reply("📌 Send a private transfer:\n\nExample: transfer 0.1 SOL to @username or to wallet address")
+            self._menu_context[tg_user_id] = {'awaiting_input': 'private_transfer'}
             return True
         elif message_text == "📱 Request Payment":
-            await event.reply("📌 How much would you like to request?\n\nExample: $5 USDC or 1000 BONK")
-            self._menu_context[tg_user_id] = {'awaiting_input': 'accept'}
+            await event.reply("📌 Enter the amount to request privately:\n\nExample: 10")
+            self._menu_context[tg_user_id] = {'awaiting_input': 'private_accept_amount'}
             return True
         elif message_text == "🕵️ Privacy":
             await self._show_privacy_menu(event)
@@ -530,7 +514,7 @@ class TelegramBot:
             await event.reply("📞 Need help?\n\nVisit: https://t.me/my_solana_agent")
             return True
         elif message_text == "🔒 Private Transfer":
-            await event.reply("📌 Send a private transfer:\n\nExample: private transfer $5 USDC to @walletbubbles")
+            await event.reply("📌 Send a private transfer:\n\nExample: transfer $5 USDC to @walletbubbles")
             self._menu_context[tg_user_id] = {'awaiting_input': 'private_transfer'}
             return True
         elif message_text == "📥 Private Accept":
@@ -605,9 +589,9 @@ class TelegramBot:
         elif command == '/limit':
             await self._handle_limit(event, tg_user_id, args)
         elif command == '/accept':
-            await self._handle_accept(event, tg_user_id, args)
+            await self._handle_private_accept(event, tg_user_id, args)
         elif command == '/transfer':
-            await self._handle_transfer(event, tg_user_id, args)
+            await self._handle_private_transfer(event, tg_user_id, args)
         elif command == '/private' or command == '/privacy':
             await self._show_privacy_menu(event)
         elif command == '/private_transfer':
@@ -666,54 +650,10 @@ class TelegramBot:
             }
             return
 
-        # Check for payment deep link: pay_{request_id}
+        # Non-private payment requests are disabled
         if args.startswith('pay_'):
-            request_id = args.replace('pay_', '')
-            
-            # Retrieve request from DB
-            request = await self.db.get_payment_request(request_id)
-            
-            if request:
-                recipient_wallet = request['wallet_address']
-                token_symbol = request['token_symbol']
-                amount = request['amount']
-                usd_value = request.get('amount_usd', 0.0)
-                
-                usd_str = f" (~${usd_value:.2f})" if usd_value else ""
-                
-                # Try to get recipient username
-                recipient_display = f"<code>{recipient_wallet[:8]}...{recipient_wallet[-4:]}</code>"
-                try:
-                    recipient_user = await self.db.get_user_by_wallet_address(recipient_wallet)
-                    if recipient_user and recipient_user.get('tg_username'):
-                        recipient_display = f"@{recipient_user['tg_username']}"
-                except Exception:
-                    pass
-                
-                # Show payment request and ask for confirmation
-                await event.reply(
-                    f"💳 <b>Payment Request</b>\n\n"
-                    f"<b>Amount:</b> {amount} {token_symbol}{usd_str}\n"
-                    f"<b>To:</b> {recipient_display}\n\n"
-                    f"Tap the button below to pay or cancel.",
-                    parse_mode='html',
-                    buttons=[
-                        [Button.text(f"✅ Pay {amount} {token_symbol}", resize=True, single_use=True)],
-                        [Button.text("❌ Cancel", resize=True, single_use=True)]
-                    ]
-                )
-                # Store payment context for button handling
-                self._menu_context[tg_user_id] = {
-                    'awaiting_input': 'pay_confirm',
-                    'request_id': request_id,
-                    'recipient_wallet': recipient_wallet,
-                    'amount': amount,
-                    'token_symbol': token_symbol
-                }
-                return
-            else:
-                await event.reply("⚠️ Payment request not found or expired.")
-                return
+            await event.reply("⚠️ Non-private payments are disabled. Use private payment requests instead.")
+            return
         
         # Legacy support or other deep links can go here if needed
         
@@ -871,7 +811,7 @@ class TelegramBot:
         )
         
         buttons = [
-            [Button.text("💼 Portfolio", resize=True), Button.text("💸 Send Tokens", resize=True)],
+            [Button.text("💼 Portfolio", resize=True), Button.text("🔒 Transfer", resize=True)],
             [Button.text("📱 Request Payment", resize=True), Button.text("🕵️ Privacy", resize=True)],
             [Button.text("💳 Buy $AGENT", resize=True), Button.text("💰 Sell to Fiat", resize=True)],
             [Button.text("◀️ Back to Menu", resize=True)]
@@ -1059,169 +999,12 @@ class TelegramBot:
         await self._process_agent_message(event, tg_user_id, f"[RESPOND IN ENGLISH] Set this limit order: {args.strip()}")
 
     async def _handle_accept(self, event, tg_user_id: int, args: str):
-        """Handle /accept command - generate RTP QR code via Agent resolution."""
-        if not args.strip():
-            await event.reply(
-                "Usage: /accept <amount> <token>\n\n"
-                "Examples:\n"
-                "/accept $5 USDC\n"
-                "/accept 1000 BONK\n"
-                "/accept $5 worth of AGENT"
-            )
-            return
-
-        # Send typing indicator while we process with Agent
-        user_id = self._get_user_id(tg_user_id)
-
-        _, wallet_address = await self._get_wallet_info(tg_user_id)
-        if not wallet_address:
-            await event.reply("❌ Your wallet isn't initialized yet. Run /start to create it.")
-            return
-        
-        # 1. Get Wallet Address and Token Details from Agent in one go
-        # We ask the agent to do the heavy lifting: search token, prices, conversion
-        prompt = (
-            f"[RESPOND_JSON_ONLY] I need to generate a specific payment request for this user input: '{args.strip()}'.\n"
-            f"1. Use the user's wallet address: {wallet_address}.\n"
-            f"2. Identify the token symbol from the input and FIND ITS MINT ADDRESS on Solana (search if needed).\n"
-            f"3. Calculate the token amount:\n"
-            f"   - If input has '$' (e.g. '$5 AGENT'), find the current price and convert USD to token amount.\n"
-            f"   - If input is just numbers (e.g. '100 BONK'), use that as the token amount.\n"
-            f"4. Return ONLY a JSON object (no markdown, no conversation) with these keys:\n"
-            f"   - wallet_address: str\n"
-            f"   - token_mint: str\n"
-            f"   - token_symbol: str (uppercase)\n"
-            f"   - amount: float (the calculated token amount)\n"
-            f"   - usd_value: float (approximate USD value for display)\n"
-        )
-        
-        agent_response = ""
-        try:
-            async with self.client.action(event.chat_id, 'typing', delay=4):
-                async for chunk in self.solana_agent.process(user_id, prompt):
-                    agent_response += chunk
-        except Exception:
-            async for chunk in self.solana_agent.process(user_id, prompt):
-                agent_response += chunk
-        
-        # Clean up response (remove markdown code blocks if present)
-        clean_json = agent_response.replace('```json', '').replace('```', '').strip()
-        
-        try:
-            import json
-            data = json.loads(clean_json)
-            
-            wallet_address = data.get('wallet_address')
-            token_mint = data.get('token_mint')
-            token_symbol = data.get('token_symbol')
-            amount = data.get('amount')
-            usd_value = data.get('usd_value', 0.0)
-            
-            if not all([wallet_address, token_mint, amount]):
-                raise ValueError("Missing fields in agent response")
-                
-            # Format amount nicely (limit decimals)
-            amount_str = f"{amount:.9f}".rstrip('0').rstrip('.')
-            
-        except Exception as e:
-            logger.error(f"Failed to parse agent JSON: {clean_json} - {e}")
-            await event.reply("❌ Couldn't understand the request. Try: /accept $5 USDC")
-            return
-
-        # Store payment request in DB
-        try:
-            request_id = await self.db.create_payment_request(
-                wallet_address=wallet_address,
-                token_mint=token_mint,
-                token_symbol=token_symbol,
-                amount=amount,
-                amount_usd=usd_value
-            )
-        except Exception as e:
-            logger.error(f"Failed to create payment request: {e}")
-            await event.reply("❌ Failed to create payment request.")
-            return
-
-        # Build the deep link URL with short ID
-        # Format: https://t.me/{bot_username}?start=pay_{request_id}
-        bot_username = self.bot_username if self.bot_username else "solana_agent_bot"
-        deep_link = f"https://t.me/{bot_username}?start=pay_{request_id}"
-        
-        # Get current user's username for display
-        sender = await event.get_sender()
-        username = getattr(sender, 'username', None)
-        recipient_display = f"@{username}" if username else f"<code>{wallet_address[:8]}...{wallet_address[-4:]}</code>"
-        
-        # Generate QR code
-        qr = segno.make(deep_link)
-        buffer = BytesIO()
-        qr.save(buffer, kind='png', scale=8, border=2)
-        buffer.seek(0)
-        buffer.name = 'qr.png'
-        
-        # Format display string
-        usd_str = f" (~${usd_value:.2f})" if usd_value else ""
-        
-        # Send the QR code
-        caption = (
-            f"💳 <b>Payment Request</b>\n\n"
-            f"<b>Amount:</b> {amount_str} {token_symbol}{usd_str}\n"
-            f"<b>To:</b> {recipient_display}\n\n"
-            f"Scan this QR code or <a href='{deep_link}'>click here to pay</a>"
-        )
-        
-        await event.reply(
-            caption,
-            file=buffer,
-            parse_mode='html'
-        )
-        
-        logger.info(f"Generated accept QR for {tg_user_id}: ${amount} {token_symbol} (ID: {request_id})")
+        """Handle /accept command - private payment requests only."""
+        await self._handle_private_accept(event, tg_user_id, args)
 
     async def _handle_transfer(self, event, tg_user_id: int, args: str):
-        """Handle /transfer command - send tokens to another wallet or username."""
-        if not args.strip():
-            await event.reply(
-                "Usage: /transfer <amount> <token> to <wallet or @username>\n\n"
-                "Examples:\n"
-                "/transfer $5 USDC to @bevan\n"
-                "/transfer 0.1 SOL to 6qfHeaUu1tUiEyKLRHKCPt5YzGfkkHZ34R1np3Mue81y\n"
-                "/transfer 100 BONK to mywallet.sol"
-            )
-            return
-
-        # Check for username in args
-        # Simple split to find the last word acting as recipient (usually after 'to')
-        input_text = args.strip()
-        
-        # Check if user tried to use @username
-        if '@' in input_text:
-            parts = input_text.split()
-            # Find the part with @
-            username_part = next((p for p in parts if p.startswith('@')), None)
-            
-            if username_part:
-                # Lookup user
-                target_user = await self.db.get_user_by_username(username_part)
-                
-                if target_user:
-                    wallet_address = target_user.get('wallet_address')
-                    
-                    if not wallet_address:
-                        await event.reply(f"❌ User {username_part} found, but their wallet hasn't been initialized yet. They need to run /wallet at least once to set it up.")
-                        return
-
-                    # Replace username with wallet address in the text
-                    input_text = input_text.replace(username_part, wallet_address)
-                else:
-                    await event.reply(f"❌ User {username_part} not found. They must have started this bot at least once.")
-                    return
-
-        await self._process_agent_message(
-            event, 
-            tg_user_id, 
-            f"[RESPOND IN ENGLISH] Execute this token transfer: {input_text}. Use the transfer tool to send the tokens to the specified wallet address."
-        )
+        """Handle /transfer command - private transfers only."""
+        await self._handle_private_transfer(event, tg_user_id, args)
 
     async def _resolve_username_in_text(self, event, input_text: str) -> Tuple[str, Optional[str]]:
         """Resolve @username to wallet address, returning updated text and wallet if found."""
@@ -1284,13 +1067,13 @@ class TelegramBot:
         return user_id, wallet_id, wallet_address
 
     async def _handle_private_transfer(self, event, tg_user_id: int, args: str):
-        """Handle /private_transfer command - private transfer via PrivacyCash."""
+        """Handle /transfer command - private transfer via PrivacyCash."""
         if not args.strip():
             await event.reply(
-                "Usage: /private_transfer <amount> <token> to <wallet or @username>\n\n"
+                "Usage: /transfer <amount> <token> to <wallet or @username>\n\n"
                 "Examples:\n"
-                "/private_transfer $5 USDC to @walletbubbles\n"
-                "/private_transfer 0.1 SOL to 6qfHeaUu1tUiEyKLRHKCPt5YzGfkkHZ34R1np3Mue81y"
+                "/transfer $5 USDC to @walletbubbles\n"
+                "/transfer 0.1 SOL to 6qfHeaUu1tUiEyKLRHKCPt5YzGfkkHZ34R1np3Mue81y"
             )
             return
 
@@ -1397,13 +1180,13 @@ class TelegramBot:
                 )
 
     async def _handle_private_accept(self, event, tg_user_id: int, args: str, token_override: Optional[str] = None):
-        """Handle /private_accept command - create a private payment request message."""
+        """Handle /accept command - create a private payment request message."""
         if not args.strip():
             await event.reply(
-                "Usage: /private_accept <amount> <token>\n\n"
+                "Usage: /accept <amount> <token>\n\n"
                 "Examples:\n"
-                "/private_accept $5 SOL\n"
-                "/private_accept 10 USDC"
+                "/accept $5 SOL\n"
+                "/accept 10 USDC"
             )
             return
 
@@ -1421,7 +1204,7 @@ class TelegramBot:
         amount = float(amount_match.group(1)) if amount_match else None
 
         if not amount or amount <= 0:
-            await event.reply("❌ Couldn't understand that request. Try: /private_accept 5 SOL")
+            await event.reply("❌ Couldn't understand that request. Try: /accept 5 SOL")
             return
 
         if token_symbol not in ("SOL", "USDC"):
