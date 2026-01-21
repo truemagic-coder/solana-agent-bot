@@ -7,6 +7,7 @@ import base64
 import json
 import logging
 import re
+from decimal import Decimal, ROUND_DOWN
 from io import BytesIO
 from typing import Optional, Tuple
 
@@ -18,6 +19,7 @@ from telethon.tl.types import BotMenuButtonDefault
 
 from .config import config as app_config
 from .database import DatabaseService
+from . import price_service
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +59,89 @@ class TelegramBot:
         Privy uses 'telegram:<user_id>' format for Telegram-linked users.
         """
         return f"telegram:{tg_user_id}"
+
+    def _format_decimal(self, value: Decimal, decimals: int = 9) -> str:
+        quant = Decimal(10) ** -decimals
+        rounded = value.quantize(quant, rounding=ROUND_DOWN)
+        formatted = format(rounded, 'f')
+        return formatted.rstrip('0').rstrip('.') if '.' in formatted else formatted
+
+    async def _privacy_cash_fee_details(self, amount: float, token_symbol: str, usd_value: float = 0.0) -> dict:
+        """
+        Return fee and net amount details for Privacy Cash transfers.
+        
+        Privacy Cash fee structure:
+        - 0.35% of transfer amount (in the transfer token)
+        - 0.006 SOL flat fee (converted to USDC for USDC transfers)
+        """
+        try:
+            amount_decimal = Decimal(str(amount))
+        except Exception:
+            amount_decimal = Decimal("0")
+
+        fee_rate = Decimal("0.0035")  # 0.35%
+        fee_token = amount_decimal * fee_rate
+        fee_sol_amount = Decimal("0.006")  # 0.006 SOL flat fee
+
+        token_symbol = (token_symbol or "").upper()
+
+        # For USDC transfers, convert the 0.006 SOL fee to USDC
+        fee_sol_in_token = Decimal("0")
+        if token_symbol == "SOL":
+            fee_sol_in_token = fee_sol_amount
+        elif token_symbol == "USDC":
+            # Convert 0.006 SOL to USDC using current SOL price
+            sol_to_usdc = await price_service.sol_to_usdc(float(fee_sol_amount))
+            if sol_to_usdc is not None:
+                fee_sol_in_token = Decimal(str(sol_to_usdc))
+            else:
+                # Fallback: estimate SOL at ~$200 if API fails
+                fee_sol_in_token = fee_sol_amount * Decimal("200")
+                logger.warning("Could not fetch SOL price, using $200 estimate for fee calculation")
+
+        # Total fee in transfer token
+        total_fee = fee_token + fee_sol_in_token
+        net_amount = amount_decimal - total_fee
+
+        if net_amount < 0:
+            net_amount = Decimal("0")
+
+        net_usd = None
+        if usd_value and amount_decimal > 0:
+            try:
+                net_usd = Decimal(str(usd_value)) * (net_amount / amount_decimal)
+            except Exception:
+                net_usd = None
+
+        return {
+            "token_symbol": token_symbol,
+            "fee_percentage": fee_token,
+            "fee_sol_in_token": fee_sol_in_token,
+            "total_fee": total_fee,
+            "net_amount": net_amount,
+            "net_usd": net_usd,
+        }
+
+    async def _privacy_cash_fee_lines(self, amount: float, token_symbol: str, usd_value: float = 0.0) -> Tuple[str, str]:
+        """Return (fees_line, net_line) strings for Privacy Cash transfers."""
+        details = await self._privacy_cash_fee_details(amount, token_symbol, usd_value=usd_value)
+
+        token_symbol = details["token_symbol"]
+        total_fee_str = self._format_decimal(details["total_fee"], 6)
+        net_amount_str = self._format_decimal(details["net_amount"], 6)
+
+        if token_symbol:
+            fees_line = f"Fees: {total_fee_str} {token_symbol}"
+            net_line = f"Recipient receives: {net_amount_str} {token_symbol}"
+        else:
+            fees_line = "Fees: ~0.006 SOL"
+            net_line = ""
+
+        if details["net_usd"] is not None:
+            net_usd_str = self._format_decimal(details["net_usd"], 2)
+            net_line = f"{net_line} (~${net_usd_str})" if net_line else ""
+
+        return fees_line, net_line
     
     async def send_payment_notification(
         self,
@@ -110,19 +195,24 @@ class TelegramBot:
     ):
         """Send a private payment notification (no public tx)."""
         try:
-            amount_str = f"{amount:.9f}".rstrip('0').rstrip('.')
-            usd_str = f" (~${usd_value:.2f})" if usd_value else ""
+            amount_decimal = Decimal(str(amount)) if amount else Decimal("0")
+            amount_str = self._format_decimal(amount_decimal, 9)
+            fees_line, net_line = await self._privacy_cash_fee_lines(amount, token_symbol, usd_value=usd_value)
+            amount_line = f"<b>Amount:</b> {amount_str} {token_symbol}\n" if token_symbol else ""
+            net_line = f"<b>{net_line}</b>\n" if net_line else ""
 
             message = (
                 f"🔒 <b>Private Payment Received</b>\n\n"
                 f"<b>From:</b> {sender_display}\n"
-                f"<b>Amount:</b> {amount_str} {token_symbol}{usd_str}\n\n"
-                f"This transfer is private and has no public explorer link."
+                f"{amount_line}"
+                f"{net_line}"
+                f"{fees_line}\n"
+                f"\nThis transfer is private and has no public explorer link."
             )
 
             await self.client.send_message(recipient_tg_user_id, message, parse_mode='html')
             logger.info(
-                f"Sent private payment notification to {recipient_tg_user_id}: {amount_str} {token_symbol}"
+                f"Sent private payment notification to {recipient_tg_user_id}"
             )
         except Exception as e:
             logger.error(f"Failed to send private payment notification to {recipient_tg_user_id}: {e}")
@@ -1120,15 +1210,16 @@ class TelegramBot:
         recipient_wallet = data.get("recipient") or recipient_wallet
         usd_value = data.get("usd_value", 0.0)
 
-        amount_str = f"{amount:.9f}".rstrip('0').rstrip('.')
+        amount_str = self._format_decimal(Decimal(str(amount)), 9)
+        fees_line, net_line = await self._privacy_cash_fee_lines(amount, token_symbol, usd_value=usd_value)
         if recipient_wallet:
             await event.reply(
-                f"✅ Private transfer sent: {amount_str} {token_symbol} to <code>{recipient_wallet}</code>",
+                f"✅ Private transfer sent: {amount_str} {token_symbol} to <code>{recipient_wallet}</code>\n{fees_line}\n{net_line}",
                 parse_mode='html'
             )
         else:
             await event.reply(
-                f"✅ Private transfer sent: {amount_str} {token_symbol}",
+                f"✅ Private transfer sent: {amount_str} {token_symbol}\n{fees_line}\n{net_line}",
                 parse_mode='html'
             )
 
@@ -1270,11 +1361,7 @@ class TelegramBot:
         await event.reply(
             caption,
             file=buffer,
-            parse_mode='html',
-            buttons=[
-                [Button.text(f"✅ Pay {amount_str} {token_symbol} (Private)", resize=True, single_use=True)],
-                [Button.text("❌ Cancel", resize=True, single_use=True)]
-            ]
+            parse_mode='html'
         )
 
     async def _handle_shield_deposit(self, event, tg_user_id: int, args: str):
@@ -1395,9 +1482,10 @@ class TelegramBot:
         recipient_wallet = data.get("recipient") or recipient_wallet
         usd_value = data.get("usd_value", usd_value)
 
-        amount_str = f"{amount:.9f}".rstrip('0').rstrip('.')
+        amount_str = self._format_decimal(Decimal(str(amount)), 9)
+        fees_line, net_line = await self._privacy_cash_fee_lines(amount, token_symbol, usd_value=usd_value)
         await event.reply(
-            f"✅ Private payment sent: {amount_str} {token_symbol} to <code>{recipient_wallet}</code>",
+            f"✅ Private payment sent: {amount_str} {token_symbol} to <code>{recipient_wallet}</code>\n{fees_line}\n{net_line}",
             parse_mode='html'
         )
 
