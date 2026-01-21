@@ -855,10 +855,10 @@ class TelegramBot:
                 except Exception as e:
                     logger.error(f"Failed to store wallet for {tg_user_id}: {e}")
             
-            await event.reply(portfolio_text, parse_mode='html')
+            await self._send_long_message(event, portfolio_text)
         except (json.JSONDecodeError, ValueError) as e:
             logger.error(f"Failed to parse wallet response for {tg_user_id}: {e}")
-            await event.reply(response)
+            await self._send_long_message(event, response)
     
     async def _handle_orders(self, event, tg_user_id: int):
         """Handle /orders command - ask agent to list limit orders."""
