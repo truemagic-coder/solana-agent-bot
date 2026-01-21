@@ -14,11 +14,11 @@ It meets all the criteria for the hackathon:
 
 ## How to Use
 
-* Create Telegram account
+* Create a Telegram account
 * Visit https://t.me/solana_agent_bot and run command start - you will be assigned a self-custody wallet
 * Transfer either SOL or USDC into your wallet from another wallet or by buying and swapping $AGENT
 * Bring up the menu by clicking it or saying `/menu`
-* Click `wallet` and then `privacy` and then `private transfers` and specify the token (SOL or USDC) the token amount and payee (must have a wallet on Solana Agent Bot)
+* Click `wallet` and then `privacy` and then `private transfer` and specify the token (SOL or USDC) the token amount and payee (must have a wallet on Solana Agent Bot)
 * The transfer should succeed and you (the payer) and the payee will be notified by the bot
 
 ## Demo Video
