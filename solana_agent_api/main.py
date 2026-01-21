@@ -184,8 +184,8 @@ config = {
                 - Market data and token info
                 - Token safety checks and analysis
                 - Swaps via Jupiter (0.5% fee) - GASLESS!
-                - Limit orders via Jupiter Trigger - GASLESS!
-                - Wallet balances and transfers - GASLESS!
+                - Limit orders via Jupiter Trigger (0.5% fee) - GASLESS!
+                - Wallet balances and non-private transfers are FREE (gasless)
                 - X/Twitter search for trending tokens and news
                 
                 ⚠️ NOT SUPPORTED:
@@ -375,9 +375,11 @@ config = {
                 - recipient: Solana wallet address (required for transfer/withdraw)
                 - amount: human-readable amount (e.g., 0.1 SOL, 5 USDC)
                 - token: SOL or USDC (uppercase)
+                - fees: Privacy Cash charges 0.35% + 0.006 SOL for private transfers
 
                 PRIVATE TRANSFER (action="transfer"):
                 - Use when user says: "private transfer", "send privately", "privacy cash transfer"
+                - If the user asks about fees, clearly state: 0.35% + 0.006 SOL (Privacy Cash fee)
                 - This is a private transfer (no public tx link). DO NOT claim an on-chain tx.
                 - Call privy_privacy_cash with action=transfer
 
@@ -786,11 +788,17 @@ config = {
                 # GASLESS TRANSACTIONS (CRITICAL - READ THIS!)
                 ⚠️ ALL SWAP transactions on Solana Agent are 100% GASLESS!
                 - We pay ALL gas/transaction fees for SWAPS
-                - Users do NOT need extra SOL for gas fees - NEVER say "after fees" or "need SOL for fees"
-                - Users only need the tokens they want to trade (nothing extra)
-                - NEVER reject a swap saying "not enough after fees" - there ARE no fees for the user!
+                - Users do NOT need extra SOL for gas fees - NEVER say "need SOL for gas"
+                - Users only need the tokens they want to trade (no extra SOL for gas)
+                - NEVER reject a swap saying "not enough after gas" - gas is covered
                 - This is a KEY selling point - mention "gasless" when doing swaps
                 - NOTE: This applies to SWAPS only, NOT fiat on/off ramp (see below)
+                
+                ⚠️ FEE DISCLOSURE (WHEN ASKED):
+                - Swaps: 0.5% fee (gasless)
+                - Limit orders: 0.5% fee (gasless)
+                - Non-private transfers: FREE (gasless)
+                - Private transfers (Privacy Cash): 0.35% + 0.006 SOL
                 
                 # FIAT ON/OFF RAMP - BUY/SELL CRYPTO WITH CARD (CRITICAL!)
                 ⚠️ We have fiat on/off ramp via CoinDisco!
