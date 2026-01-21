@@ -362,12 +362,40 @@ class TelegramBot:
                 if message_text.lower() in ("pay", "✅ pay", "✅ pay privately") or message_text.startswith("✅ Pay"):
                     request = await self.db.get_payment_request(request_id) if request_id else None
                     if not request:
-                        await event.reply("⚠️ Payment request not found or expired.")
+                        await event.reply("⚠️ Payment request not found or expired.", buttons=Button.clear())
+                        await self._show_main_menu(event)
                         return
                     await self._execute_private_payment_request(event, tg_user_id, request)
                     return
                 if message_text.lower() in ("cancel", "❌ cancel"):
-                    await event.reply("Private payment cancelled.")
+                    self._menu_context.pop(tg_user_id, None)
+                    await event.reply("Private payment cancelled.", buttons=Button.clear())
+                    await self._show_main_menu(event)
+                    return
+                await event.reply("Please confirm by tapping ✅ Pay or reply with 'pay'.")
+                self._menu_context[tg_user_id] = context
+                return
+            elif awaiting == 'pay_confirm':
+                request_id = context.get('request_id')
+                recipient_wallet = context.get('recipient_wallet')
+                amount = context.get('amount')
+                token_symbol = context.get('token_symbol')
+                if message_text.lower() in ("pay", "✅ pay") or message_text.startswith("✅ Pay"):
+                    if not recipient_wallet or not amount or not token_symbol:
+                        await event.reply("⚠️ Payment details missing.", buttons=Button.clear())
+                        await self._show_main_menu(event)
+                        return
+                    # Execute the transfer via agent
+                    await self._process_agent_message(
+                        event,
+                        tg_user_id,
+                        f"Transfer {amount} {token_symbol} to {recipient_wallet}"
+                    )
+                    return
+                if message_text.lower() in ("cancel", "❌ cancel"):
+                    self._menu_context.pop(tg_user_id, None)
+                    await event.reply("Payment cancelled.", buttons=Button.clear())
+                    await self._show_main_menu(event)
                     return
                 await event.reply("Please confirm by tapping ✅ Pay or reply with 'pay'.")
                 self._menu_context[tg_user_id] = context
@@ -527,6 +555,13 @@ class TelegramBot:
             self._menu_context[tg_user_id] = {'awaiting_input': 'shield_balance'}
             return True
         
+        # Handle cancel button as fallback (when user clicks it without pending context)
+        elif message_text == "❌ Cancel":
+            self._menu_context.pop(tg_user_id, None)
+            await event.reply("Cancelled.", buttons=Button.clear())
+            await self._show_main_menu(event)
+            return True
+        
         # Not a menu button
         return False
     
@@ -660,23 +695,21 @@ class TelegramBot:
                     f"💳 <b>Payment Request</b>\n\n"
                     f"<b>Amount:</b> {amount} {token_symbol}{usd_str}\n"
                     f"<b>To:</b> {recipient_display}\n\n"
-                    f"To send this payment, reply with:\n"
-                    f"<code>/transfer {amount} {token_symbol} to {recipient_wallet}</code>\n\n"
-                    f"Or tap the button below to pay.",
+                    f"Tap the button below to pay or cancel.",
                     parse_mode='html',
                     buttons=[
                         [Button.text(f"✅ Pay {amount} {token_symbol}", resize=True, single_use=True)],
                         [Button.text("❌ Cancel", resize=True, single_use=True)]
                     ]
                 )
-                # Store pending payment for quick "pay" confirmation
-                # Process with agent to set up context, but explicitly tell it NOT to execute yet
-                await self._process_agent_message(
-                    event,
-                    tg_user_id,
-                    f"[RESPOND IN ENGLISH] [SILENT_CONTEXT] User is reviewing a payment request for {amount} {token_symbol} to {recipient_wallet}. WAIT for the user to explicitly confirm by saying 'pay' or tapping the button. DO NOT execute the transfer yet. Just confirm you are ready.",
-                    silent=True
-                )
+                # Store payment context for button handling
+                self._menu_context[tg_user_id] = {
+                    'awaiting_input': 'pay_confirm',
+                    'request_id': request_id,
+                    'recipient_wallet': recipient_wallet,
+                    'amount': amount,
+                    'token_symbol': token_symbol
+                }
                 return
             else:
                 await event.reply("⚠️ Payment request not found or expired.")
