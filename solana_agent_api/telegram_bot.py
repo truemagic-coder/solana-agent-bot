@@ -1213,7 +1213,6 @@ class TelegramBot:
 
                     # Replace username with wallet address in the text
                     input_text = input_text.replace(username_part, wallet_address)
-                    await event.reply(f"🔍 Resolved {username_part} to `{wallet_address}`")
                 else:
                     await event.reply(f"❌ User {username_part} not found. They must have started this bot at least once.")
                     return
@@ -1251,7 +1250,6 @@ class TelegramBot:
             return "", None
 
         input_text = input_text.replace(username_part, wallet_address)
-        await event.reply(f"🔍 Resolved {username_part} to `{wallet_address}`")
 
         return input_text, wallet_address
 
