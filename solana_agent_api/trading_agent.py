@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 # Default strategy prompt for users who haven't set one
 DEFAULT_STRATEGY_PROMPT = """Active trading strategy (moderate/aggressive):
 - Seek opportunity while managing risk (not overly conservative)
-- Favor limit orders at support/resistance; use pullback entries in trends
+- Favor limit orders at support/resistance; also allow momentum entries for strong runners
 - Prefer liquid tokens (>$100k liquidity) and Jupiter-verified assets when available
 - Allow multiple concurrent positions when signals are strong
 - Target position sizing around 10–20% of portfolio per trade when setup is strong
@@ -36,6 +36,8 @@ CRITICAL TRADING RULES (MUST FOLLOW):
 8. Consider existing open orders before placing new ones
 9. Check token liquidity before trading - skip if <$50k
 10. Default sizing guidance: target 10–20% of portfolio for strong setups, 5–10% for moderate setups
+11. Limit entry guardrail: do NOT place a buy limit more than 25% below current price. If support is farther, choose HOLD or use the nearest support within 25%.
+12. Momentum entries are allowed: for strong uptrends, you may place smaller laddered limit buys within 2–8% below current price (or at near-term supports) to catch runners.
 
 RESPONSE FORMAT (JSON):
 {
