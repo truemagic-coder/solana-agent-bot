@@ -110,6 +110,30 @@ def payment_request_document(
     }
 
 
+def bot_thought_document(
+    tg_user_id: int,
+    mode: str,
+    strategy_prompt: str,
+    prompt: str,
+    raw_response: str,
+    parsed_response: dict,
+    context_snapshot: dict,
+) -> dict:
+    """Create a bot thought log document (AI reasoning + context)."""
+    thought_id = generate(size=12)
+    return {
+        "_id": thought_id,
+        "tg_user_id": tg_user_id,
+        "mode": mode,
+        "strategy_prompt": strategy_prompt,
+        "prompt": prompt,
+        "raw_response": raw_response,
+        "parsed_response": parsed_response,
+        "context_snapshot": context_snapshot,
+        "timestamp": datetime.utcnow(),
+    }
+
+
 def paper_portfolio_document(initial_balance_usd: float = 1000.0) -> dict:
     """Create a paper trading portfolio document."""
     return {

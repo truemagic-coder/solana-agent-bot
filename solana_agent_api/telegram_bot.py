@@ -612,6 +612,8 @@ class TelegramBot:
             await self._handle_paper_portfolio(event, tg_user_id)
         elif command == '/botlog':
             await self._handle_bot_log(event, tg_user_id)
+        elif command == '/botthoughts':
+            await self._handle_bot_thoughts(event, tg_user_id)
         else:
             # Treat unknown commands as regular messages
             await self._process_agent_message(event, tg_user_id, message_text)
@@ -1492,7 +1494,8 @@ class TelegramBot:
                 "• /trading status - Check current status\n\n"
                 "• /strategy <goals> - Set your trading strategy\n"
                 "• /paper - View paper portfolio\n"
-                "• /botlog - View bot actions\n\n"
+                "• /botlog - View bot actions\n"
+                "• /botthoughts - View bot reasoning\n\n"
                 "<b>How it works:</b>\n"
                 "1. Set your strategy in plain English\n"
                 "2. The AI analyzes TA, trending tokens, and your portfolio\n"
@@ -1623,6 +1626,42 @@ class TelegramBot:
         
         await event.reply(
             f"📜 <b>Recent Bot Actions</b>\n\n{log_text}",
+            parse_mode='html'
+        )
+
+    async def _handle_bot_thoughts(self, event, tg_user_id: int):
+        """Handle /botthoughts command - show recent bot reasoning."""
+        thoughts = await self.db.get_user_bot_thoughts(tg_user_id, limit=5)
+
+        if not thoughts:
+            await event.reply(
+                "🧠 <b>Bot Thoughts</b>\n\nNo thoughts logged yet.",
+                parse_mode='html'
+            )
+            return
+
+        blocks = []
+        for thought in thoughts:
+            ts = thought.get("timestamp", "")
+            if hasattr(ts, "strftime"):
+                ts = ts.strftime("%m/%d %H:%M")
+
+            parsed = thought.get("parsed_response", {}) or {}
+            portfolio_summary = parsed.get("portfolio_summary", "(none)")
+            market_outlook = parsed.get("market_outlook", "(none)")
+
+            # Keep it short
+            portfolio_summary = (portfolio_summary[:300] + "...") if len(portfolio_summary) > 300 else portfolio_summary
+            market_outlook = (market_outlook[:300] + "...") if len(market_outlook) > 300 else market_outlook
+
+            blocks.append(
+                f"<b>{ts}</b>\n"
+                f"📊 Portfolio: {portfolio_summary}\n"
+                f"🌐 Market: {market_outlook}"
+            )
+
+        await event.reply(
+            "🧠 <b>Bot Thoughts (Recent)</b>\n\n" + "\n\n".join(blocks),
             parse_mode='html'
         )
 

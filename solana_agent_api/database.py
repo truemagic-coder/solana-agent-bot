@@ -11,6 +11,7 @@ from solana_agent_api.models import (
     user_document,
     paper_portfolio_document,
     paper_order_document,
+    bot_thought_document,
 )
 
 logger = logging.getLogger(__name__)
@@ -28,6 +29,7 @@ class DatabaseService:
         self.payment_requests = self.db["payment_requests"]
         self.paper_orders = self.db["paper_orders"]
         self.bot_actions = self.db["bot_actions"]
+        self.bot_thoughts = self.db["bot_thoughts"]
     
     async def setup_indexes(self):
         """Create necessary indexes for performance."""
@@ -57,6 +59,11 @@ class DatabaseService:
         await self.bot_actions.create_index("tg_user_id")
         await self.bot_actions.create_index("timestamp")
         await self.bot_actions.create_index([("tg_user_id", 1), ("timestamp", -1)])
+
+        # Bot thoughts indexes
+        await self.bot_thoughts.create_index("tg_user_id")
+        await self.bot_thoughts.create_index("timestamp")
+        await self.bot_thoughts.create_index([("tg_user_id", 1), ("timestamp", -1)])
         
         logger.info("Database indexes created")
 
@@ -436,6 +443,33 @@ class DatabaseService:
     async def log_bot_action(self, action: dict):
         """Log a bot trading action."""
         await self.bot_actions.insert_one(action)
+
+    async def log_bot_thoughts(
+        self,
+        tg_user_id: int,
+        mode: str,
+        strategy_prompt: str,
+        prompt: str,
+        raw_response: str,
+        parsed_response: dict,
+        context_snapshot: dict,
+    ):
+        """Log AI reasoning and context for a trading cycle."""
+        thought = bot_thought_document(
+            tg_user_id=tg_user_id,
+            mode=mode,
+            strategy_prompt=strategy_prompt,
+            prompt=prompt,
+            raw_response=raw_response,
+            parsed_response=parsed_response,
+            context_snapshot=context_snapshot,
+        )
+        await self.bot_thoughts.insert_one(thought)
+
+    async def get_user_bot_thoughts(self, tg_user_id: int, limit: int = 10) -> list:
+        """Get recent bot thoughts for a user."""
+        cursor = self.bot_thoughts.find({"tg_user_id": tg_user_id}).sort("timestamp", -1).limit(limit)
+        return await cursor.to_list(length=None)
 
     async def get_user_bot_actions(self, tg_user_id: int, limit: int = 50) -> list:
         """Get recent bot actions for a user."""

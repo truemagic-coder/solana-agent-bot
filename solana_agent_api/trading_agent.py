@@ -156,13 +156,31 @@ class TradingAgent:
 
         # Parse AI response
         decisions = self._parse_ai_response(response)
+
+        # Log AI thinking for this cycle (even if no actions)
+        await self.db.log_bot_thoughts(
+            tg_user_id=tg_user_id,
+            mode=trading_mode,
+            strategy_prompt=strategy_prompt,
+            prompt=prompt,
+            raw_response=response,
+            parsed_response=decisions or {},
+            context_snapshot={
+                "portfolio_value_usd": context.get("portfolio_value_usd"),
+                "open_orders": context.get("open_orders"),
+                "ta_results": context.get("ta_results"),
+                "gems": context.get("gems"),
+                "timestamp": context.get("timestamp"),
+            },
+        )
+
         if not decisions:
             logger.info(f"No actionable decisions for user {tg_user_id}")
             return
 
         # Execute decisions
         for decision in decisions.get("decisions", []):
-            await self._execute_decision(user, decision, context, trading_mode)
+            await self._execute_decision(user, decision, context, trading_mode, decisions)
 
     async def _gather_context(self, user: dict, wallet_address: str, watchlist: List[str]) -> dict:
         """Gather all context needed for AI trading decision."""
@@ -330,7 +348,7 @@ Respond with valid JSON only.
         except Exception:
             return {}
 
-    async def _execute_decision(self, user: dict, decision: dict, context: dict, mode: str):
+    async def _execute_decision(self, user: dict, decision: dict, context: dict, mode: str, decisions_bundle: dict):
         """Execute a trading decision (paper or live)."""
         tg_user_id = user.get("tg_user_id")
         action = decision.get("action", "hold").lower()
@@ -359,6 +377,11 @@ Respond with valid JSON only.
             "amount_usd": amount_usd,
             "price_target_usd": price_target,
             "reasoning": reasoning,
+            "ai_thoughts": {
+                "portfolio_summary": decisions_bundle.get("portfolio_summary"),
+                "market_outlook": decisions_bundle.get("market_outlook"),
+                "decision_reasoning": reasoning,
+            },
             "context_snapshot": {
                 "portfolio_value_usd": context.get("portfolio_value_usd"),
                 "ta_summary": context.get("ta_results", {}).get(token_symbol, {}),
@@ -382,6 +405,13 @@ Respond with valid JSON only.
                 "status": "pending",
             }
             
+            thoughts_line = ""
+            if decisions_bundle.get("portfolio_summary") or decisions_bundle.get("market_outlook"):
+                thoughts_line = (
+                    f"\n🧠 Thoughts: {decisions_bundle.get('portfolio_summary', '')} "
+                    f"| {decisions_bundle.get('market_outlook', '')}"
+                )
+
             # Notify user
             await self._notify_user(
                 tg_user_id,
@@ -389,6 +419,7 @@ Respond with valid JSON only.
                 f"{'📈 BUY' if action == 'buy' else '📉 SELL'} ${amount_usd:.2f} of {token_symbol}\n"
                 f"Target price: ${price_target:.8f}\n"
                 f"Reasoning: {reasoning[:200]}..."
+                f"{thoughts_line}"
             )
         else:
             # Live trading - execute via solana_agent
@@ -409,6 +440,13 @@ Respond with valid JSON only.
                     "result": result,
                     "status": "submitted",
                 }
+
+                thoughts_line = ""
+                if decisions_bundle.get("portfolio_summary") or decisions_bundle.get("market_outlook"):
+                    thoughts_line = (
+                        f"\n🧠 Thoughts: {decisions_bundle.get('portfolio_summary', '')} "
+                        f"| {decisions_bundle.get('market_outlook', '')}"
+                    )
                 
                 # Notify user
                 await self._notify_user(
@@ -417,6 +455,7 @@ Respond with valid JSON only.
                     f"{'📈 BUY' if action == 'buy' else '📉 SELL'} ${amount_usd:.2f} of {token_symbol}\n"
                     f"Target price: ${price_target:.8f}\n"
                     f"Reasoning: {reasoning[:200]}...\n\n"
+                    f"{thoughts_line}\n\n"
                     f"Result: {result[:300]}"
                 )
             except Exception as e:
