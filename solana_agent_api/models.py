@@ -134,6 +134,26 @@ def bot_thought_document(
     }
 
 
+def trend_change_document(
+    tg_user_id: int,
+    previous_tokens: list,
+    current_tokens: list,
+    changed: bool,
+    minutes_since_last: float,
+) -> dict:
+    """Create a trending-tokens change log document."""
+    change_id = generate(size=12)
+    return {
+        "_id": change_id,
+        "tg_user_id": tg_user_id,
+        "previous_tokens": previous_tokens,
+        "current_tokens": current_tokens,
+        "changed": changed,
+        "minutes_since_last": minutes_since_last,
+        "timestamp": datetime.utcnow(),
+    }
+
+
 def paper_portfolio_document(initial_balance_usd: float = 1000.0) -> dict:
     """Create a paper trading portfolio document with starting USDC position."""
     return {

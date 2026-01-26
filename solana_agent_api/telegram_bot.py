@@ -614,6 +614,8 @@ class TelegramBot:
             await self._handle_bot_log(event, tg_user_id)
         elif command == '/botthoughts':
             await self._handle_bot_thoughts(event, tg_user_id, args)
+        elif command == '/trendchanges':
+            await self._handle_trend_changes(event, tg_user_id)
         else:
             # Treat unknown commands as regular messages
             await self._process_agent_message(event, tg_user_id, message_text)
@@ -1717,6 +1719,47 @@ class TelegramBot:
         header = "🧠 <b>Bot Thoughts (Full)</b>" if full_mode else "🧠 <b>Bot Thoughts (Recent)</b>"
         await event.reply(
             header + "\n\n" + "\n\n".join(blocks),
+            parse_mode='html'
+        )
+
+    async def _handle_trend_changes(self, event, tg_user_id: int):
+        """Handle /trendchanges command - suggest best interval based on trend changes."""
+        # Pull recent trend change logs
+        logs = await self.db.trend_changes.find({"tg_user_id": tg_user_id}).sort("timestamp", -1).limit(20).to_list(length=None)
+        if not logs:
+            await event.reply(
+                "📈 <b>Trend Change Interval</b>\n\nNo data yet. Run the bot for a few cycles first.",
+                parse_mode='html'
+            )
+            return
+
+        # Compute average minutes between changes
+        changes = [log for log in logs if log.get("changed")]
+        avg_minutes = None
+        if changes:
+            avg_minutes = sum([log.get("minutes_since_last", 0) for log in changes]) / max(1, len(changes))
+
+        # Suggest interval
+        suggestion = "15 minutes"
+        if avg_minutes:
+            if avg_minutes < 10:
+                suggestion = "5 minutes"
+            elif avg_minutes < 20:
+                suggestion = "10 minutes"
+            elif avg_minutes < 40:
+                suggestion = "15 minutes"
+            else:
+                suggestion = "30 minutes"
+
+        latest = logs[0]
+        current_tokens = ", ".join(latest.get("current_tokens", [])) or "(none)"
+
+        avg_text = f"{avg_minutes:.1f} min" if avg_minutes else "N/A"
+        await event.reply(
+            "📈 <b>Trend Change Interval</b>\n\n"
+            f"Recent avg time between changes: <b>{avg_text}</b>\n"
+            f"Suggested polling interval: <b>{suggestion}</b>\n\n"
+            f"Latest trending tokens: {current_tokens}",
             parse_mode='html'
         )
 

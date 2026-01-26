@@ -279,6 +279,34 @@ class TradingAgent:
         except Exception as e:
             logger.error(f"Failed to get open orders or gems: {e}")
 
+        # Log how often trending tokens change
+        try:
+            current_gems = context.get("gems", {}).get("gems", []) or []
+            current_tokens = [g.get("token") for g in current_gems if g.get("token")]
+            previous_tokens = user.get("last_gems", []) or []
+            last_gems_at = user.get("last_gems_at")
+
+            changed = set(current_tokens) != set(previous_tokens)
+            minutes_since_last = 0.0
+            if last_gems_at and hasattr(last_gems_at, "timestamp"):
+                minutes_since_last = max(0.0, (datetime.utcnow() - last_gems_at).total_seconds() / 60.0)
+
+            await self.db.log_trend_change(
+                tg_user_id=tg_user_id,
+                previous_tokens=previous_tokens,
+                current_tokens=current_tokens,
+                changed=changed,
+                minutes_since_last=minutes_since_last,
+            )
+
+            # Store latest gems on user
+            await self.db.users.update_one(
+                {"tg_user_id": tg_user_id},
+                {"$set": {"last_gems": current_tokens, "last_gems_at": datetime.utcnow()}}
+            )
+        except Exception as e:
+            logger.error(f"Failed to log trend changes: {e}")
+
         # Get TA for portfolio tokens + watchlist
         tokens_to_analyze = set(watchlist)
         

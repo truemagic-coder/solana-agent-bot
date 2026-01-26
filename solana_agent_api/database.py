@@ -12,6 +12,7 @@ from solana_agent_api.models import (
     paper_portfolio_document,
     paper_order_document,
     bot_thought_document,
+    trend_change_document,
 )
 
 logger = logging.getLogger(__name__)
@@ -30,6 +31,7 @@ class DatabaseService:
         self.paper_orders = self.db["paper_orders"]
         self.bot_actions = self.db["bot_actions"]
         self.bot_thoughts = self.db["bot_thoughts"]
+        self.trend_changes = self.db["trend_changes"]
     
     async def setup_indexes(self):
         """Create necessary indexes for performance."""
@@ -64,6 +66,11 @@ class DatabaseService:
         await self.bot_thoughts.create_index("tg_user_id")
         await self.bot_thoughts.create_index("timestamp")
         await self.bot_thoughts.create_index([("tg_user_id", 1), ("timestamp", -1)])
+
+        # Trend changes indexes
+        await self.trend_changes.create_index("tg_user_id")
+        await self.trend_changes.create_index("timestamp")
+        await self.trend_changes.create_index([("tg_user_id", 1), ("timestamp", -1)])
         
         logger.info("Database indexes created")
 
@@ -491,6 +498,24 @@ class DatabaseService:
             context_snapshot=context_snapshot,
         )
         await self.bot_thoughts.insert_one(thought)
+
+    async def log_trend_change(
+        self,
+        tg_user_id: int,
+        previous_tokens: list,
+        current_tokens: list,
+        changed: bool,
+        minutes_since_last: float,
+    ):
+        """Log a trending tokens change event."""
+        doc = trend_change_document(
+            tg_user_id=tg_user_id,
+            previous_tokens=previous_tokens,
+            current_tokens=current_tokens,
+            changed=changed,
+            minutes_since_last=minutes_since_last,
+        )
+        await self.trend_changes.insert_one(doc)
 
     async def get_user_bot_thoughts(self, tg_user_id: int, limit: int = 10) -> list:
         """Get recent bot thoughts for a user."""
