@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_STRATEGY_PROMPT = """Active trading strategy (moderate/aggressive):
 - Seek opportunity while managing risk (not overly conservative)
 - Favor limit orders at support/resistance; use pullback entries in trends
-- Prefer liquid tokens (>$100k liquidity) and Jupiter-verified assets
+- Prefer liquid tokens (>$100k liquidity) and Jupiter-verified assets when available
 - Allow multiple concurrent positions when signals are strong
 - Target position sizing around 10–20% of portfolio per trade when setup is strong
 - Use stop-losses and take-profit targets based on TA levels
@@ -27,7 +27,7 @@ DEFAULT_STRATEGY_PROMPT = """Active trading strategy (moderate/aggressive):
 SYSTEM_TRADING_RULES = """
 CRITICAL TRADING RULES (MUST FOLLOW):
 1. Minimum order size is $5 USD (Jupiter limit)
-2. Only trade Jupiter verified tokens on Solana
+2. Only trade Solana tokens; prefer Jupiter-verified tokens when available
 3. Never exceed 25% of portfolio in a single position
 4. Always use limit orders, never market orders
 5. For paper mode: simulate orders, do not execute real trades
