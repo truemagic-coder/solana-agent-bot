@@ -2066,7 +2066,8 @@ class TelegramBot:
         
         # Set menu button to show default bot menu
         try:
-            await self.client(SetBotMenuButtonRequest(menu_button=BotMenuButtonDefault()))
+            # Telethon versions differ: some expect positional args
+            await self.client(SetBotMenuButtonRequest(BotMenuButtonDefault()))
             logger.info("Menu button set to default")
         except Exception as e:
             logger.warning(f"Could not set menu button: {e}")

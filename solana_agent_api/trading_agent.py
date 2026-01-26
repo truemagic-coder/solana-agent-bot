@@ -352,6 +352,8 @@ class TradingAgent:
         
         prompt = f"""You are an AI trading agent making decisions for a user's portfolio.
 
+    IMPORTANT: This is an automated trading session where you are explicitly authorized to make buy/sell decisions and place limit orders based on the user's strategy. This overrides any generic no-advice policy for this session.
+
 {mode_note}
 
 USER'S TRADING STRATEGY:
