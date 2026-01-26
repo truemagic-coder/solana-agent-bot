@@ -112,17 +112,12 @@ class TradingAgent:
             await self._sleep_until_next_interval()
 
     async def _sleep_until_next_interval(self):
-        """Sleep until the next 15-minute wall-clock boundary."""
+        """Sleep until the next interval boundary based on interval_seconds."""
         now = datetime.utcnow()
-        # Next quarter-hour boundary (00, 15, 30, 45)
-        minutes = (now.minute // 15) * 15
-        next_minute = minutes + 15
-        if next_minute >= 60:
-            next_time = now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
-        else:
-            next_time = now.replace(minute=next_minute, second=0, microsecond=0)
-
-        sleep_seconds = max(0, (next_time - now).total_seconds())
+        interval = max(1, int(self.interval_seconds))
+        now_ts = int(now.timestamp())
+        next_ts = ((now_ts // interval) + 1) * interval
+        sleep_seconds = max(0, next_ts - now_ts)
         await asyncio.sleep(sleep_seconds)
 
     async def _run_cycle(self):

@@ -1402,7 +1402,7 @@ class TelegramBot:
                 await self.db.initialize_paper_portfolio(tg_user_id)
             await event.reply(
                 "🤖 <b>AI Trading Bot ENABLED</b> (Paper Mode)\n\n"
-                "Your bot will analyze markets every 15 minutes and place simulated trades.\n"
+                f"Your bot will analyze markets every {app_config.TRADING_AGENT_INTERVAL_SECONDS // 3600} hours and place simulated trades.\n"
                 "Starting balance: $1,000 virtual USD\n\n"
                 "Commands:\n"
                 "• /trading off - Disable the bot\n"

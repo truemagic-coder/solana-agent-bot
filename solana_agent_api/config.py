@@ -43,4 +43,7 @@ class Config:
     TELEGRAM_API_HASH = os.getenv("TELEGRAM_API_HASH")
     TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
+    # Trading Agent
+    TRADING_AGENT_INTERVAL_SECONDS = int(os.getenv("TRADING_AGENT_INTERVAL_SECONDS", "14400"))
+
 config = Config()

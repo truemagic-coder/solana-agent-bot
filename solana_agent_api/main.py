@@ -1297,12 +1297,12 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(telegram_bot.start())
     logger.info("Telegram bot started")
     
-    # Start Trading agent in background (15 min interval)
+    # Start Trading agent in background (configurable interval)
     trading_agent = TradingAgent(
         solana_agent=solana_agent,
         db_service=db_service,
         telegram_bot=telegram_bot,
-        interval_seconds=900,  # 15 minutes
+        interval_seconds=app_config.TRADING_AGENT_INTERVAL_SECONDS,
     )
     asyncio.create_task(trading_agent.start())
     logger.info("Trading agent started")
