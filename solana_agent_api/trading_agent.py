@@ -262,7 +262,7 @@ class TradingAgent:
             orders_response = ""
             async for chunk in self.solana_agent.process(
                 user_id,
-                f"[RESPOND_JSON_ONLY] List all open limit orders for wallet_id {user.get('wallet_id')}. Return JSON: {{\"orders\": [{{\"order_id\": \"...\", \"token\": \"...\", \"side\": \"buy/sell\", \"amount_usd\": ..., \"target_price\": ...}}]}}"
+                f"[RESPOND_JSON_ONLY] List all open limit orders for wallet_id {user.get('wallet_id')} and wallet_public_key {wallet_address}. Return JSON: {{\"orders\": [{{\"order_id\": \"...\", \"token\": \"...\", \"side\": \"buy/sell\", \"amount_usd\": ..., \"target_price\": ...}}]}}"
             ):
                 orders_response += chunk
             context["open_orders"] = self._parse_json_response(orders_response)
