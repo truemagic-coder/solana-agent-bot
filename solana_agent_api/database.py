@@ -301,6 +301,32 @@ class DatabaseService:
         )
         return paper_portfolio
 
+    async def ensure_paper_portfolio_usdc(self, tg_user_id: int, initial_balance: float = 1000.0):
+        """Ensure paper portfolio has a USDC position instead of empty cash-only state."""
+        user = await self.get_user_by_tg_id(tg_user_id)
+        if not user:
+            return None
+
+        paper_portfolio = user.get("paper_portfolio")
+        if not paper_portfolio:
+            return await self.initialize_paper_portfolio(tg_user_id, initial_balance)
+
+        positions = paper_portfolio.get("positions", [])
+        if positions:
+            return paper_portfolio
+
+        # Seed with USDC using existing balance or default
+        balance = paper_portfolio.get("balance_usd", 0.0)
+        initial_value = paper_portfolio.get("initial_value_usd", initial_balance)
+        seed_amount = max(balance, initial_value, initial_balance)
+
+        seeded = paper_portfolio_document(seed_amount)
+        await self.users.update_one(
+            {"tg_user_id": tg_user_id},
+            {"$set": {"paper_portfolio": seeded}}
+        )
+        return seeded
+
     async def get_paper_portfolio(self, tg_user_id: int) -> Optional[dict]:
         """Get user's paper trading portfolio."""
         user = await self.get_user_by_tg_id(tg_user_id)

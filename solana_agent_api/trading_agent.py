@@ -216,14 +216,24 @@ class TradingAgent:
         if trading_mode == "paper":
             paper_portfolio = user.get("paper_portfolio")
             if paper_portfolio:
+                if not paper_portfolio.get("positions"):
+                    paper_portfolio = await self.db.ensure_paper_portfolio_usdc(tg_user_id)
                 context["paper_portfolio"] = paper_portfolio
                 context["portfolio_value_usd"] = await self._calculate_paper_value(paper_portfolio)
             else:
                 # Initialize paper portfolio if not exists
                 await self.db.initialize_paper_portfolio(tg_user_id)
                 context["paper_portfolio"] = {
-                    "balance_usd": 1000.0,
-                    "positions": [],
+                    "balance_usd": 0.0,
+                    "positions": [
+                        {
+                            "token_symbol": "USDC",
+                            "token_address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+                            "amount": 1000.0,
+                            "entry_price_usd": 1.0,
+                            "current_value_usd": 1000.0,
+                        }
+                    ],
                     "initial_value_usd": 1000.0,
                 }
                 context["portfolio_value_usd"] = 1000.0

@@ -135,10 +135,18 @@ def bot_thought_document(
 
 
 def paper_portfolio_document(initial_balance_usd: float = 1000.0) -> dict:
-    """Create a paper trading portfolio document."""
+    """Create a paper trading portfolio document with starting USDC position."""
     return {
-        "balance_usd": initial_balance_usd,
-        "positions": [],  # [{token_symbol, token_address, amount, entry_price_usd, current_value_usd}]
+        "balance_usd": 0.0,
+        "positions": [
+            {
+                "token_symbol": "USDC",
+                "token_address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+                "amount": initial_balance_usd,
+                "entry_price_usd": 1.0,
+                "current_value_usd": initial_balance_usd,
+            }
+        ],  # [{token_symbol, token_address, amount, entry_price_usd, current_value_usd}]
         "initial_value_usd": initial_balance_usd,
         "created_at": datetime.utcnow(),
     }
