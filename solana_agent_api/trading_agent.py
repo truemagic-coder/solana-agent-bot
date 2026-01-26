@@ -13,13 +13,14 @@ from .database import DatabaseService
 logger = logging.getLogger(__name__)
 
 # Default strategy prompt for users who haven't set one
-DEFAULT_STRATEGY_PROMPT = """Balanced trading strategy:
-- Moderate risk tolerance, protect capital first
-- Follow TA signals (RSI, MACD, EMAs) for entry/exit timing
-- Prefer liquid tokens (>$100k liquidity)
-- Use limit orders at technical support/resistance levels
-- Take profits at reasonable gains, use stop-losses to limit downside
-- Consider trending tokens from market analysis but verify with TA
+DEFAULT_STRATEGY_PROMPT = """Active trading strategy (moderate/aggressive):
+- Seek opportunity while managing risk (not overly conservative)
+- Favor limit orders at support/resistance; use pullback entries in trends
+- Prefer liquid tokens (>$100k liquidity) and Jupiter-verified assets
+- Allow multiple concurrent positions when signals are strong
+- Target position sizing around 10–20% of portfolio per trade when setup is strong
+- Use stop-losses and take-profit targets based on TA levels
+- Use trending tokens as candidates, but require TA confirmation
 """
 
 # System rules the AI must follow
@@ -34,6 +35,7 @@ CRITICAL TRADING RULES (MUST FOLLOW):
 7. If uncertain, default to HOLD - don't force trades
 8. Consider existing open orders before placing new ones
 9. Check token liquidity before trading - skip if <$50k
+10. Default sizing guidance: target 10–20% of portfolio for strong setups, 5–10% for moderate setups
 
 RESPONSE FORMAT (JSON):
 {
