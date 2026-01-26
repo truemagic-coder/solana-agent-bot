@@ -639,7 +639,7 @@ Respond with valid JSON only.
                 f"{'📈 BUY' if action == 'buy' else '📉 SELL'} ${amount_usd:.2f} of {token_symbol}\n"
                 f"Order type: {order_type.upper()}\n"
                 f"Target price: ${price_target:.8f}\n"
-                f"Reasoning: {reasoning[:500]}..."
+                f"Reasoning: {reasoning[:1200]}"
                 f"{thoughts_line}"
             )
         else:
@@ -680,7 +680,7 @@ Respond with valid JSON only.
                     f"{'📈 BUY' if action == 'buy' else '📉 SELL'} ${amount_usd:.2f} of {token_symbol}\n"
                     f"Order type: {order_type.upper()}\n"
                     f"Target price: ${price_target:.8f}\n"
-                    f"Reasoning: {reasoning[:500]}...\n\n"
+                    f"Reasoning: {reasoning[:1200]}\n\n"
                     f"{thoughts_line}\n\n"
                     f"Result: {result[:300]}"
                 )
