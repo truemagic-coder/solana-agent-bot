@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from .config import config as app_config
 from .database import DatabaseService
 from .telegram_bot import TelegramBot
+from .trading_agent import TradingAgent
 from solana_agent import SolanaAgent
 
 config = {
@@ -1267,6 +1268,9 @@ db_service = DatabaseService(app_config.MONGO_URL, app_config.MONGO_DB)
 # Initialize Telegram bot (will be started in lifespan)
 telegram_bot: TelegramBot = None
 
+# Initialize Trading agent (will be started in lifespan)
+trading_agent: TradingAgent = None
+
 
 class ChatRequest(BaseModel):
     text: str
@@ -1275,7 +1279,7 @@ class ChatRequest(BaseModel):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown events."""
-    global telegram_bot
+    global telegram_bot, trading_agent
     
     # Startup
     logger.info("Starting up...")
@@ -1288,10 +1292,22 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(telegram_bot.start())
     logger.info("Telegram bot started")
     
+    # Start Trading agent in background (15 min interval)
+    trading_agent = TradingAgent(
+        solana_agent=solana_agent,
+        db_service=db_service,
+        telegram_bot=telegram_bot,
+        interval_seconds=900,  # 15 minutes
+    )
+    asyncio.create_task(trading_agent.start())
+    logger.info("Trading agent started")
+    
     yield
     
     # Shutdown
     logger.info("Shutting down...")
+    if trading_agent:
+        await trading_agent.stop()
     if telegram_bot:
         await telegram_bot.stop()
 

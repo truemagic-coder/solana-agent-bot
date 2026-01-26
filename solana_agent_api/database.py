@@ -9,6 +9,8 @@ from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 
 from solana_agent_api.models import (
     user_document,
+    paper_portfolio_document,
+    paper_order_document,
 )
 
 logger = logging.getLogger(__name__)
@@ -24,6 +26,8 @@ class DatabaseService:
         self.swaps = self.db["swaps"]
         self.daily_volumes = self.db["daily_volumes"]
         self.payment_requests = self.db["payment_requests"]
+        self.paper_orders = self.db["paper_orders"]
+        self.bot_actions = self.db["bot_actions"]
     
     async def setup_indexes(self):
         """Create necessary indexes for performance."""
@@ -43,6 +47,16 @@ class DatabaseService:
         # Daily volumes indexes
         await self.daily_volumes.create_index([("user_privy_id", 1), ("date", 1)], unique=True)
         await self.daily_volumes.create_index("date")
+        
+        # Paper orders indexes
+        await self.paper_orders.create_index("tg_user_id")
+        await self.paper_orders.create_index("status")
+        await self.paper_orders.create_index([("tg_user_id", 1), ("status", 1)])
+        
+        # Bot actions indexes
+        await self.bot_actions.create_index("tg_user_id")
+        await self.bot_actions.create_index("timestamp")
+        await self.bot_actions.create_index([("tg_user_id", 1), ("timestamp", -1)])
         
         logger.info("Database indexes created")
 
@@ -250,3 +264,208 @@ class DatabaseService:
             return await self.payment_requests.find_one({"_id": request_id})
         except Exception:
             return None
+
+    # =========================================================================
+    # TRADING AGENT OPERATIONS
+    # =========================================================================
+
+    async def get_trading_enabled_users(self) -> list:
+        """Get all users with trading enabled.
+        
+        Paper mode: Any user with trading_mode='paper' (no whitelist needed)
+        Live mode: Only users with trading_mode='live' AND live_trading_allowed=True
+        """
+        cursor = self.users.find({
+            "$or": [
+                # Paper trading - anyone can do it
+                {"trading_mode": "paper"},
+                # Live trading - requires whitelist
+                {"trading_mode": "live", "live_trading_allowed": True}
+            ]
+        })
+        return await cursor.to_list(length=None)
+
+    async def initialize_paper_portfolio(self, tg_user_id: int, initial_balance: float = 1000.0):
+        """Initialize paper trading portfolio for a user."""
+        paper_portfolio = paper_portfolio_document(initial_balance)
+        await self.users.update_one(
+            {"tg_user_id": tg_user_id},
+            {"$set": {"paper_portfolio": paper_portfolio}}
+        )
+        return paper_portfolio
+
+    async def get_paper_portfolio(self, tg_user_id: int) -> Optional[dict]:
+        """Get user's paper trading portfolio."""
+        user = await self.get_user_by_tg_id(tg_user_id)
+        if user:
+            return user.get("paper_portfolio")
+        return None
+
+    async def create_paper_order(
+        self,
+        tg_user_id: int,
+        action: str,
+        token_symbol: str,
+        token_address: str,
+        amount_usd: float,
+        price_target_usd: float,
+    ) -> dict:
+        """Create a paper trading order."""
+        order = paper_order_document(
+            tg_user_id=tg_user_id,
+            action=action,
+            token_symbol=token_symbol,
+            token_address=token_address,
+            amount_usd=amount_usd,
+            price_target_usd=price_target_usd,
+        )
+        await self.paper_orders.insert_one(order)
+        return order
+
+    async def get_pending_paper_orders(self) -> list:
+        """Get all pending paper orders."""
+        cursor = self.paper_orders.find({"status": "pending"})
+        return await cursor.to_list(length=None)
+
+    async def get_user_paper_orders(self, tg_user_id: int, status: Optional[str] = None) -> list:
+        """Get paper orders for a specific user."""
+        query = {"tg_user_id": tg_user_id}
+        if status:
+            query["status"] = status
+        cursor = self.paper_orders.find(query).sort("created_at", -1)
+        return await cursor.to_list(length=None)
+
+    async def fill_paper_order(self, order_id: str, fill_price_usd: float):
+        """Mark a paper order as filled."""
+        await self.paper_orders.update_one(
+            {"_id": order_id},
+            {
+                "$set": {
+                    "status": "filled",
+                    "fill_price_usd": fill_price_usd,
+                    "filled_at": datetime.utcnow(),
+                }
+            }
+        )
+
+    async def cancel_paper_order(self, order_id: str):
+        """Cancel a paper order."""
+        await self.paper_orders.update_one(
+            {"_id": order_id},
+            {"$set": {"status": "cancelled"}}
+        )
+
+    async def update_paper_portfolio_on_fill(
+        self,
+        tg_user_id: int,
+        action: str,
+        token_symbol: str,
+        token_address: str,
+        amount_usd: float,
+        fill_price_usd: float,
+    ):
+        """Update paper portfolio when an order fills."""
+        user = await self.get_user_by_tg_id(tg_user_id)
+        if not user:
+            return
+        
+        paper_portfolio = user.get("paper_portfolio", {})
+        positions = paper_portfolio.get("positions", [])
+        balance = paper_portfolio.get("balance_usd", 0)
+        
+        if action == "buy":
+            # Deduct from balance, add to positions
+            balance -= amount_usd
+            
+            # Calculate token amount
+            token_amount = amount_usd / fill_price_usd if fill_price_usd > 0 else 0
+            
+            # Check if position exists
+            existing_pos = None
+            for pos in positions:
+                if pos.get("token_symbol") == token_symbol:
+                    existing_pos = pos
+                    break
+            
+            if existing_pos:
+                # Average into existing position
+                old_amount = existing_pos.get("amount", 0)
+                old_value = old_amount * existing_pos.get("entry_price_usd", 0)
+                new_total_value = old_value + amount_usd
+                new_total_amount = old_amount + token_amount
+                new_avg_price = new_total_value / new_total_amount if new_total_amount > 0 else 0
+                
+                existing_pos["amount"] = new_total_amount
+                existing_pos["entry_price_usd"] = new_avg_price
+                existing_pos["current_value_usd"] = new_total_amount * fill_price_usd
+            else:
+                # Create new position
+                positions.append({
+                    "token_symbol": token_symbol,
+                    "token_address": token_address,
+                    "amount": token_amount,
+                    "entry_price_usd": fill_price_usd,
+                    "current_value_usd": amount_usd,
+                })
+        
+        elif action == "sell":
+            # Find position and reduce
+            for pos in positions:
+                if pos.get("token_symbol") == token_symbol:
+                    sell_amount = amount_usd / fill_price_usd if fill_price_usd > 0 else 0
+                    pos["amount"] = max(0, pos.get("amount", 0) - sell_amount)
+                    pos["current_value_usd"] = pos["amount"] * fill_price_usd
+                    
+                    # Add proceeds to balance
+                    balance += amount_usd
+                    
+                    # Remove position if fully sold
+                    if pos["amount"] <= 0:
+                        positions.remove(pos)
+                    break
+        
+        # Update portfolio
+        paper_portfolio["balance_usd"] = balance
+        paper_portfolio["positions"] = positions
+        
+        await self.users.update_one(
+            {"tg_user_id": tg_user_id},
+            {"$set": {"paper_portfolio": paper_portfolio}}
+        )
+
+    async def log_bot_action(self, action: dict):
+        """Log a bot trading action."""
+        await self.bot_actions.insert_one(action)
+
+    async def get_user_bot_actions(self, tg_user_id: int, limit: int = 50) -> list:
+        """Get recent bot actions for a user."""
+        cursor = self.bot_actions.find({"tg_user_id": tg_user_id}).sort("timestamp", -1).limit(limit)
+        return await cursor.to_list(length=None)
+
+    async def update_user_trading_settings(
+        self,
+        tg_user_id: int,
+        trading_enabled: Optional[bool] = None,
+        trading_mode: Optional[str] = None,
+        trading_strategy_prompt: Optional[str] = None,
+        trading_watchlist: Optional[list] = None,
+    ) -> bool:
+        """Update user's trading settings."""
+        update_data = {}
+        if trading_enabled is not None:
+            update_data["trading_enabled"] = trading_enabled
+        if trading_mode is not None:
+            update_data["trading_mode"] = trading_mode
+        if trading_strategy_prompt is not None:
+            update_data["trading_strategy_prompt"] = trading_strategy_prompt
+        if trading_watchlist is not None:
+            update_data["trading_watchlist"] = trading_watchlist
+        
+        if not update_data:
+            return False
+        
+        result = await self.users.update_one(
+            {"tg_user_id": tg_user_id},
+            {"$set": update_data}
+        )
+        return result.modified_count > 0

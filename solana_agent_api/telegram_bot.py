@@ -604,6 +604,14 @@ class TelegramBot:
             await self._handle_shield_withdraw(event, tg_user_id, args)
         elif command == '/shield_balance':
             await self._handle_shield_balance(event, tg_user_id, args)
+        elif command == '/trading':
+            await self._handle_trading(event, tg_user_id, args)
+        elif command == '/strategy':
+            await self._handle_strategy(event, tg_user_id, args)
+        elif command == '/paper':
+            await self._handle_paper_portfolio(event, tg_user_id)
+        elif command == '/botlog':
+            await self._handle_bot_log(event, tg_user_id)
         else:
             # Treat unknown commands as regular messages
             await self._process_agent_message(event, tg_user_id, message_text)
@@ -1372,6 +1380,250 @@ class TelegramBot:
             event,
             tg_user_id,
             f"[RESPOND IN ENGLISH] Check my shielded balance for {args.strip()} using wallet_id {wallet_id}. Use privy_privacy_cash action=balance."
+        )
+
+    async def _handle_trading(self, event, tg_user_id: int, args: str):
+        """Handle /trading command - manage AI trading bot."""
+        args_lower = args.strip().lower() if args else ""
+        
+        if args_lower == "on":
+            # Enable trading in paper mode - available to everyone
+            await self.db.update_user_trading_settings(
+                tg_user_id=tg_user_id,
+                trading_mode="paper",
+            )
+            # Initialize paper portfolio if needed
+            user = await self.db.get_user_by_tg_id(tg_user_id)
+            if not user.get("paper_portfolio"):
+                await self.db.initialize_paper_portfolio(tg_user_id)
+            await event.reply(
+                "🤖 <b>AI Trading Bot ENABLED</b> (Paper Mode)\n\n"
+                "Your bot will analyze markets every 15 minutes and place simulated trades.\n"
+                "Starting balance: $1,000 virtual USD\n\n"
+                "Commands:\n"
+                "• /trading off - Disable the bot\n"
+                "• /trading live - Switch to live trading (requires approval)\n"
+                "• /strategy <your goals> - Set your trading strategy\n"
+                "• /paper - View your paper portfolio\n"
+                "• /botlog - View recent bot actions",
+                parse_mode='html'
+            )
+        elif args_lower == "off":
+            await self.db.update_user_trading_settings(
+                tg_user_id=tg_user_id,
+                trading_mode="off",
+            )
+            await event.reply("🤖 AI Trading Bot <b>DISABLED</b>", parse_mode='html')
+        elif args_lower == "live":
+            # Switch to live mode - requires whitelist
+            user = await self.db.get_user_by_tg_id(tg_user_id)
+            if not user.get("trading_mode") == "paper":
+                await event.reply("❌ Enable paper trading first with /trading on")
+                return
+            if not user.get("live_trading_allowed"):
+                await event.reply(
+                    "❌ <b>Live Trading Not Enabled</b>\n\n"
+                    "Live trading requires approval. Contact support to get whitelisted.\n\n"
+                    "In the meantime, keep using paper trading to test your strategy!",
+                    parse_mode='html'
+                )
+                return
+            await event.reply(
+                "⚠️ <b>LIVE TRADING WARNING</b>\n\n"
+                "You are about to enable REAL trading with REAL money.\n"
+                "The AI will place actual limit orders using your wallet.\n\n"
+                "Type: /trading confirm_live\n"
+                "to confirm.",
+                parse_mode='html'
+            )
+        elif args_lower == "confirm_live":
+            # Double-check whitelist before enabling live
+            user = await self.db.get_user_by_tg_id(tg_user_id)
+            if not user.get("live_trading_allowed"):
+                await event.reply("❌ Live trading not allowed for this account.")
+                return
+            await self.db.update_user_trading_settings(
+                tg_user_id=tg_user_id,
+                trading_mode="live",
+            )
+            await event.reply(
+                "🔴 <b>LIVE TRADING ENABLED</b>\n\n"
+                "The AI bot will now execute REAL trades.\n"
+                "Use /trading off to disable at any time.",
+                parse_mode='html'
+            )
+        elif args_lower == "status":
+            user = await self.db.get_user_by_tg_id(tg_user_id)
+            mode = user.get("trading_mode", "off") if user else "off"
+            strategy = user.get("trading_strategy_prompt", "Default balanced strategy") if user else "Default balanced strategy"
+            watchlist = user.get("trading_watchlist", []) if user else []
+            live_allowed = user.get("live_trading_allowed", False) if user else False
+            
+            if mode == "live":
+                status_emoji = "🔴"
+                mode_text = "LIVE"
+            elif mode == "paper":
+                status_emoji = "🟡"
+                mode_text = "PAPER"
+            else:
+                status_emoji = "⚫"
+                mode_text = "OFF"
+            
+            live_status = "✅ Approved" if live_allowed else "❌ Not approved"
+            
+            await event.reply(
+                f"🤖 <b>Trading Bot Status</b>\n\n"
+                f"{status_emoji} Mode: <b>{mode_text}</b>\n"
+                f"🔑 Live Trading: {live_status}\n"
+                f"📋 Strategy: {strategy[:100]}...\n"
+                f"👀 Watchlist: {', '.join(watchlist) if watchlist else 'None'}\n\n"
+                f"Use /trading on|off|live to change mode",
+                parse_mode='html'
+            )
+        else:
+            # Show help
+            await event.reply(
+                "🤖 <b>AI Trading Bot</b>\n\n"
+                "Automated trading powered by AI analysis.\n\n"
+                "<b>Commands:</b>\n"
+                "• /trading on - Enable (paper mode)\n"
+                "• /trading off - Disable\n"
+                "• /trading live - Switch to live trading\n"
+                "• /trading status - Check current status\n\n"
+                "• /strategy <goals> - Set your trading strategy\n"
+                "• /paper - View paper portfolio\n"
+                "• /botlog - View bot actions\n\n"
+                "<b>How it works:</b>\n"
+                "1. Set your strategy in plain English\n"
+                "2. The AI analyzes TA, trending tokens, and your portfolio\n"
+                "3. It places limit orders aligned with your goals\n"
+                "4. You get notified of every action",
+                parse_mode='html'
+            )
+
+    async def _handle_strategy(self, event, tg_user_id: int, args: str):
+        """Handle /strategy command - set trading strategy."""
+        if not args.strip():
+            user = await self.db.get_user_by_tg_id(tg_user_id)
+            current_strategy = user.get("trading_strategy_prompt") if user else None
+            
+            if current_strategy:
+                await event.reply(
+                    f"📋 <b>Your Current Strategy:</b>\n\n{current_strategy}\n\n"
+                    "To change, use:\n/strategy <your new strategy>",
+                    parse_mode='html'
+                )
+            else:
+                await event.reply(
+                    "📋 <b>Set Your Trading Strategy</b>\n\n"
+                    "Tell the AI your trading goals in plain English.\n\n"
+                    "<b>Examples:</b>\n"
+                    "• \"I want steady growth with low risk\"\n"
+                    "• \"Aggressive momentum trading, I can handle drawdowns\"\n"
+                    "• \"Accumulate SOL on dips, flip memecoins for quick gains\"\n"
+                    "• \"Only trade tokens trending on social media\"\n\n"
+                    "Usage: /strategy <your goals>",
+                    parse_mode='html'
+                )
+            return
+        
+        strategy = args.strip()
+        await self.db.update_user_trading_settings(
+            tg_user_id=tg_user_id,
+            trading_strategy_prompt=strategy,
+        )
+        await event.reply(
+            f"✅ <b>Strategy Updated</b>\n\n{strategy}\n\n"
+            "The AI will now trade according to these goals.",
+            parse_mode='html'
+        )
+
+    async def _handle_paper_portfolio(self, event, tg_user_id: int):
+        """Handle /paper command - show paper trading portfolio."""
+        user = await self.db.get_user_by_tg_id(tg_user_id)
+        paper_portfolio = user.get("paper_portfolio") if user else None
+        
+        if not paper_portfolio:
+            await event.reply(
+                "📄 <b>Paper Portfolio</b>\n\n"
+                "No paper portfolio yet.\n"
+                "Enable trading with /trading on to start with $1,000 virtual.",
+                parse_mode='html'
+            )
+            return
+        
+        balance = paper_portfolio.get("balance_usd", 0)
+        positions = paper_portfolio.get("positions", [])
+        initial = paper_portfolio.get("initial_value_usd", 1000)
+        
+        # Calculate total value
+        total_value = balance
+        positions_text = ""
+        for pos in positions:
+            value = pos.get("current_value_usd", 0)
+            total_value += value
+            positions_text += (
+                f"• {pos.get('token_symbol')}: {pos.get('amount', 0):.6f} "
+                f"(${value:.2f})\n"
+            )
+        
+        pnl = total_value - initial
+        pnl_pct = (pnl / initial * 100) if initial > 0 else 0
+        pnl_emoji = "📈" if pnl >= 0 else "📉"
+        
+        # Get pending orders
+        pending_orders = await self.db.get_user_paper_orders(tg_user_id, status="pending")
+        orders_text = ""
+        for order in pending_orders[:5]:
+            action = "BUY" if order.get("action") == "buy" else "SELL"
+            orders_text += (
+                f"• {action} ${order.get('amount_usd', 0):.2f} {order.get('token_symbol')} "
+                f"@ ${order.get('price_target_usd', 0):.8f}\n"
+            )
+        
+        await event.reply(
+            f"📄 <b>Paper Portfolio</b>\n\n"
+            f"💵 Cash: ${balance:.2f}\n"
+            f"📊 Positions:\n{positions_text or 'None'}\n"
+            f"💰 Total Value: ${total_value:.2f}\n"
+            f"{pnl_emoji} P&L: ${pnl:+.2f} ({pnl_pct:+.1f}%)\n\n"
+            f"📋 Pending Orders:\n{orders_text or 'None'}",
+            parse_mode='html'
+        )
+
+    async def _handle_bot_log(self, event, tg_user_id: int):
+        """Handle /botlog command - show recent bot actions."""
+        actions = await self.db.get_user_bot_actions(tg_user_id, limit=10)
+        
+        if not actions:
+            await event.reply(
+                "📜 <b>Bot Action Log</b>\n\nNo actions yet.",
+                parse_mode='html'
+            )
+            return
+        
+        log_text = ""
+        for action in actions:
+            timestamp = action.get("timestamp", "")
+            if hasattr(timestamp, "strftime"):
+                timestamp = timestamp.strftime("%m/%d %H:%M")
+            
+            action_type = action.get("action_type", "").upper()
+            token = action.get("token_symbol", "?")
+            amount = action.get("amount_usd", 0)
+            mode = action.get("mode", "paper").upper()
+            status = action.get("execution", {}).get("status", "?")
+            
+            emoji = "📈" if action_type == "BUY" else "📉" if action_type == "SELL" else "⏸️"
+            
+            log_text += (
+                f"{emoji} [{mode}] {action_type} ${amount:.2f} {token} - {status}\n"
+                f"   <i>{timestamp}</i>\n"
+            )
+        
+        await event.reply(
+            f"📜 <b>Recent Bot Actions</b>\n\n{log_text}",
+            parse_mode='html'
         )
 
     async def _execute_private_payment_request(self, event, tg_user_id: int, request: dict):

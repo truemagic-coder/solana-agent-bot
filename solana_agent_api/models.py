@@ -108,3 +108,68 @@ def payment_request_document(
         "status": "pending",
         "created_at": datetime.utcnow(),
     }
+
+
+def paper_portfolio_document(initial_balance_usd: float = 1000.0) -> dict:
+    """Create a paper trading portfolio document."""
+    return {
+        "balance_usd": initial_balance_usd,
+        "positions": [],  # [{token_symbol, token_address, amount, entry_price_usd, current_value_usd}]
+        "initial_value_usd": initial_balance_usd,
+        "created_at": datetime.utcnow(),
+    }
+
+
+def paper_order_document(
+    tg_user_id: int,
+    action: str,  # "buy" or "sell"
+    token_symbol: str,
+    token_address: str,
+    amount_usd: float,
+    price_target_usd: float,
+) -> dict:
+    """Create a paper trading order document."""
+    order_id = generate(size=12)
+    return {
+        "_id": order_id,
+        "tg_user_id": tg_user_id,
+        "action": action,
+        "token_symbol": token_symbol,
+        "token_address": token_address,
+        "amount_usd": amount_usd,
+        "price_target_usd": price_target_usd,
+        "status": "pending",  # "pending", "filled", "cancelled"
+        "fill_price_usd": None,
+        "filled_at": None,
+        "created_at": datetime.utcnow(),
+    }
+
+
+def bot_action_document(
+    tg_user_id: int,
+    mode: str,
+    action_type: str,
+    token_symbol: str,
+    token_address: str,
+    amount_usd: float,
+    price_target_usd: float,
+    reasoning: str,
+    context_snapshot: dict,
+    execution: dict,
+) -> dict:
+    """Create a bot action log document."""
+    action_id = generate(size=12)
+    return {
+        "_id": action_id,
+        "tg_user_id": tg_user_id,
+        "mode": mode,
+        "action_type": action_type,
+        "token_symbol": token_symbol,
+        "token_address": token_address,
+        "amount_usd": amount_usd,
+        "price_target_usd": price_target_usd,
+        "reasoning": reasoning,
+        "context_snapshot": context_snapshot,
+        "execution": execution,
+        "timestamp": datetime.utcnow(),
+    }
