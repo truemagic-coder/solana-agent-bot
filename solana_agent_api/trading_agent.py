@@ -158,7 +158,7 @@ class TradingAgent:
         
         # Build the AI prompt
         prompt = self._build_trading_prompt(strategy_prompt, context, trading_mode)
-        prompt = f"[RESPOND_JSON_ONLY] {prompt}"
+        prompt = f"[TRADING_MODE] [RESPOND_JSON_ONLY] {prompt}"
         
         # Get AI decision
         response = ""
