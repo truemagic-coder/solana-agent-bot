@@ -294,16 +294,16 @@ CURRENT CONTEXT:
 - Portfolio Value: ${context.get('portfolio_value_usd', 'Unknown')}
 
 PORTFOLIO:
-{json.dumps(context.get('paper_portfolio') or context.get('portfolio'), indent=2)}
+{json.dumps(context.get('paper_portfolio') or context.get('portfolio'), indent=2, default=str)}
 
 OPEN LIMIT ORDERS:
-{json.dumps(context.get('open_orders'), indent=2)}
+{json.dumps(context.get('open_orders'), indent=2, default=str)}
 
 TECHNICAL ANALYSIS:
-{json.dumps(context.get('ta_results'), indent=2)}
+{json.dumps(context.get('ta_results'), indent=2, default=str)}
 
 TRENDING TOKENS (Gems):
-{json.dumps(context.get('gems'), indent=2)}
+{json.dumps(context.get('gems'), indent=2, default=str)}
 
 Based on the above context and the user's strategy, analyze the situation and provide your trading decisions.
 Remember: Only take action if there's a clear opportunity. HOLD is always a valid choice.
