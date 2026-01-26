@@ -235,7 +235,7 @@ class TradingAgent:
                 # Initialize paper portfolio if not exists
                 await self.db.initialize_paper_portfolio(tg_user_id)
                 context["paper_portfolio"] = {
-                    "balance_usd": 0.0,
+                    "balance_usd": 1000.0,
                     "positions": [
                         {
                             "token_symbol": "USDC",
@@ -269,14 +269,32 @@ class TradingAgent:
 
         # Run open orders + gems in parallel
         try:
-            orders_prompt = f"[RESPOND_JSON_ONLY] List all open limit orders for wallet_id {user.get('wallet_id')} and wallet_public_key {wallet_address}. Return JSON: {{\"orders\": [{{\"order_id\": \"...\", \"token\": \"...\", \"side\": \"buy/sell\", \"amount_usd\": ..., \"target_price\": ...}}]}}"
+            if trading_mode == "paper":
+                pending = await self.db.get_user_paper_orders(tg_user_id, status="pending")
+                context["open_orders"] = {
+                    "orders": [
+                        {
+                            "order_id": o.get("_id"),
+                            "token": o.get("token_symbol"),
+                            "side": o.get("action"),
+                            "amount_usd": o.get("amount_usd"),
+                            "target_price": o.get("price_target_usd"),
+                        }
+                        for o in pending
+                    ]
+                }
+                # Also compute reserved cash for pending buys
+                reserved = sum([o.get("amount_usd", 0) for o in pending if (o.get("action") or "").lower() == "buy"])
+                context["reserved_cash_usd"] = reserved
+            else:
+                orders_prompt = f"[RESPOND_JSON_ONLY] List all open limit orders for wallet_id {user.get('wallet_id')} and wallet_public_key {wallet_address}. Return JSON: {{\"orders\": [{{\"order_id\": \"...\", \"token\": \"...\", \"side\": \"buy/sell\", \"amount_usd\": ..., \"target_price\": ...}}]}}"
+                orders_task = asyncio.create_task(_collect_response(orders_prompt))
+                orders_response = await orders_task
+                context["open_orders"] = self._parse_json_response(orders_response)
+
             gems_prompt = "[RESPOND_JSON_ONLY] Run /gems analysis. Return JSON with top trending tokens: {\"gems\": [{\"token\": \"...\", \"address\": \"...\", \"reason\": \"...\", \"risk_level\": \"low/medium/high\"}]}"
-
-            orders_task = asyncio.create_task(_collect_response(orders_prompt))
             gems_task = asyncio.create_task(_collect_response(gems_prompt))
-
-            orders_response, gems_response = await asyncio.gather(orders_task, gems_task)
-            context["open_orders"] = self._parse_json_response(orders_response)
+            gems_response = await gems_task
             context["gems"] = self._parse_json_response(gems_response)
         except Exception as e:
             logger.error(f"Failed to get open orders or gems: {e}")
@@ -348,8 +366,16 @@ class TradingAgent:
     async def _calculate_paper_value(self, paper_portfolio: dict) -> float:
         """Calculate current value of paper portfolio."""
         total = paper_portfolio.get("balance_usd", 0)
+
+        # Use USDC position as cash if present
+        for pos in paper_portfolio.get("positions", []):
+            if (pos.get("token_symbol") or "").upper() == "USDC":
+                total = pos.get("amount", total)
+                break
         
         for pos in paper_portfolio.get("positions", []):
+            if (pos.get("token_symbol") or "").upper() == "USDC":
+                continue
             # In a real implementation, fetch current price
             # For now, use entry price as estimate
             total += pos.get("current_value_usd", pos.get("amount", 0) * pos.get("entry_price_usd", 0))
@@ -459,6 +485,16 @@ Respond with valid JSON only.
         price_target = decision.get("price_target_usd", 0)
         reasoning = decision.get("reasoning", "")
 
+        # Deduplicate within the same cycle
+        placed = context.setdefault("placed_orders", set())
+        try:
+            key = (action, token_symbol.upper(), round(float(price_target), 10))
+            if key in placed:
+                logger.info(f"Skipping duplicate decision in cycle for {token_symbol} {action} at {price_target}")
+                return
+        except Exception:
+            key = None
+
         # Skip if a matching open order already exists
         open_orders = context.get("open_orders", {}) or {}
         existing_orders = open_orders.get("orders", []) if isinstance(open_orders, dict) else []
@@ -472,6 +508,23 @@ Respond with valid JSON only.
                     return
             except Exception:
                 continue
+
+        # Prevent overspending in paper mode by reserving cash for pending buys
+        if mode == "paper" and action == "buy":
+            paper_portfolio = context.get("paper_portfolio") or {}
+            balance = float(paper_portfolio.get("balance_usd", 0) or 0)
+            for pos in paper_portfolio.get("positions", []) or []:
+                if (pos.get("token_symbol") or "").upper() == "USDC":
+                    balance = float(pos.get("amount", balance) or balance)
+                    break
+            reserved = float(context.get("reserved_cash_usd", 0) or 0)
+            available = balance - reserved
+            if amount_usd > available:
+                logger.info(f"Skipping buy: insufficient available cash (available=${available:.2f}, requested=${amount_usd:.2f})")
+                return
+
+        if key is not None:
+            placed.add(key)
         
         # Validate minimum order size
         if amount_usd < 5:
@@ -515,6 +568,11 @@ Respond with valid JSON only.
                 "paper_order_id": paper_order.get("_id"),
                 "status": "pending",
             }
+
+            # Update reserved cash and placed orders for this cycle
+            if action == "buy":
+                context["reserved_cash_usd"] = float(context.get("reserved_cash_usd", 0) or 0) + float(amount_usd)
+            # already marked in placed_orders
             
             thoughts_line = ""
             if decisions_bundle.get("portfolio_summary") or decisions_bundle.get("market_outlook"):
@@ -529,7 +587,7 @@ Respond with valid JSON only.
                 f"🤖 [PAPER] Order placed:\n"
                 f"{'📈 BUY' if action == 'buy' else '📉 SELL'} ${amount_usd:.2f} of {token_symbol}\n"
                 f"Target price: ${price_target:.8f}\n"
-                f"Reasoning: {reasoning[:200]}..."
+                f"Reasoning: {reasoning[:500]}..."
                 f"{thoughts_line}"
             )
         else:
@@ -565,7 +623,7 @@ Respond with valid JSON only.
                     f"🤖 [LIVE] Order submitted:\n"
                     f"{'📈 BUY' if action == 'buy' else '📉 SELL'} ${amount_usd:.2f} of {token_symbol}\n"
                     f"Target price: ${price_target:.8f}\n"
-                    f"Reasoning: {reasoning[:200]}...\n\n"
+                    f"Reasoning: {reasoning[:500]}...\n\n"
                     f"{thoughts_line}\n\n"
                     f"Result: {result[:300]}"
                 )

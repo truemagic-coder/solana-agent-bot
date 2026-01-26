@@ -1560,11 +1560,22 @@ class TelegramBot:
         balance = paper_portfolio.get("balance_usd", 0)
         positions = paper_portfolio.get("positions", [])
         initial = paper_portfolio.get("initial_value_usd", 1000)
+
+        pending_orders = await self.db.get_user_paper_orders(tg_user_id, status="pending")
+        reserved = sum([o.get("amount_usd", 0) for o in pending_orders if (o.get("action") or "").lower() == "buy"])
+        # Use USDC position as cash if present
+        for pos in positions:
+            if (pos.get("token_symbol") or "").upper() == "USDC":
+                balance = pos.get("amount", balance)
+                break
+        available_cash = balance - reserved
         
         # Calculate total value
         total_value = balance
         positions_text = ""
         for pos in positions:
+            if (pos.get("token_symbol") or "").upper() == "USDC":
+                continue
             value = pos.get("current_value_usd", 0)
             total_value += value
             positions_text += (
@@ -1577,7 +1588,6 @@ class TelegramBot:
         pnl_emoji = "📈" if pnl >= 0 else "📉"
         
         # Get pending orders
-        pending_orders = await self.db.get_user_paper_orders(tg_user_id, status="pending")
         orders_text = ""
         for order in pending_orders[:5]:
             action = "BUY" if order.get("action") == "buy" else "SELL"
@@ -1589,6 +1599,8 @@ class TelegramBot:
         await event.reply(
             f"📄 <b>Paper Portfolio</b>\n\n"
             f"💵 Cash: ${balance:.2f}\n"
+            f"🧾 Reserved (open buys): ${reserved:.2f}\n"
+            f"✅ Available: ${available_cash:.2f}\n"
             f"📊 Positions:\n{positions_text or 'None'}\n"
             f"💰 Total Value: ${total_value:.2f}\n"
             f"{pnl_emoji} P&L: ${pnl:+.2f} ({pnl_pct:+.1f}%)\n\n"

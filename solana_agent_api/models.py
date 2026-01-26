@@ -157,7 +157,7 @@ def trend_change_document(
 def paper_portfolio_document(initial_balance_usd: float = 1000.0) -> dict:
     """Create a paper trading portfolio document with starting USDC position."""
     return {
-        "balance_usd": 0.0,
+        "balance_usd": initial_balance_usd,
         "positions": [
             {
                 "token_symbol": "USDC",

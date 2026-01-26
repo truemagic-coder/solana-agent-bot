@@ -412,10 +412,22 @@ class DatabaseService:
         paper_portfolio = user.get("paper_portfolio", {})
         positions = paper_portfolio.get("positions", [])
         balance = paper_portfolio.get("balance_usd", 0)
+
+        # Treat USDC position as cash
+        usdc_pos = None
+        for pos in positions:
+            if (pos.get("token_symbol") or "").upper() == "USDC":
+                usdc_pos = pos
+                break
+        if usdc_pos is not None:
+            balance = usdc_pos.get("amount", balance)
         
         if action == "buy":
-            # Deduct from balance, add to positions
+            # Deduct from USDC/cash, add to positions
             balance -= amount_usd
+            if usdc_pos is not None:
+                usdc_pos["amount"] = max(0, balance)
+                usdc_pos["current_value_usd"] = usdc_pos["amount"]
             
             # Calculate token amount
             token_amount = amount_usd / fill_price_usd if fill_price_usd > 0 else 0
@@ -458,6 +470,9 @@ class DatabaseService:
                     
                     # Add proceeds to balance
                     balance += amount_usd
+                    if usdc_pos is not None:
+                        usdc_pos["amount"] = balance
+                        usdc_pos["current_value_usd"] = usdc_pos["amount"]
                     
                     # Remove position if fully sold
                     if pos["amount"] <= 0:
