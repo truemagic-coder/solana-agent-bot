@@ -21,6 +21,7 @@ DEFAULT_STRATEGY_PROMPT = """Active trading strategy (moderate/aggressive):
 - Target position sizing around 10–20% of portfolio per trade when setup is strong
 - Use stop-losses and take-profit targets based on TA levels
 - Use trending tokens as candidates, but require TA confirmation
+- Use instant swaps for strong momentum setups when a quick entry is needed
 """
 
 # System rules the AI must follow
@@ -38,6 +39,7 @@ CRITICAL TRADING RULES (MUST FOLLOW):
 10. Default sizing guidance: target 10–20% of portfolio for strong setups, 5–10% for moderate setups
 11. Limit entry guardrail: do NOT place a buy limit more than 25% below current price. If support is farther, choose HOLD or use the nearest support within 25%.
 12. Momentum entries are allowed: for strong uptrends, you may place smaller laddered limit buys within 2–8% below current price (or at near-term supports) to catch runners.
+13. Instant swap entries are allowed for strong momentum setups when speed matters. Size these smaller (5–10% of portfolio). If using an instant swap, set order_type="swap".
 
 RESPONSE FORMAT (JSON):
 {
@@ -48,7 +50,8 @@ RESPONSE FORMAT (JSON):
             "token_address": "...",
             "amount_usd": 10.0,
             "price_target_usd": 0.00002,
-            "order_type": "limit",
+            "order_type": "limit" | "swap",
+            "execution_price_usd": 0.00002,
             "reasoning": "RSI at 28 indicates oversold, EMA20 provides support at this level..."
         }
     ],
@@ -404,6 +407,19 @@ class TradingAgent:
             return "TA signals collected"
         return "Market data unavailable"
 
+    def _get_current_price_from_context(self, token_symbol: str, context: dict) -> Optional[float]:
+        """Extract current price from TA results using new schema."""
+        ta = context.get("ta_results") or {}
+        data = ta.get(token_symbol) or {}
+        if isinstance(data, dict):
+            current = data.get("current") or {}
+            price = current.get("price") if isinstance(current, dict) else None
+            try:
+                return float(price) if price is not None else None
+            except Exception:
+                return None
+        return None
+
     def _build_trading_prompt(self, strategy: str, context: dict, mode: str) -> str:
         """Build the complete trading prompt for AI."""
         mode_note = "PAPER TRADING MODE - Simulate all trades, do not execute real transactions." if mode == "paper" else "LIVE TRADING MODE - Real money, execute carefully."
@@ -484,6 +500,7 @@ Respond with valid JSON only.
         amount_usd = decision.get("amount_usd", 0)
         price_target = decision.get("price_target_usd", 0)
         reasoning = decision.get("reasoning", "")
+        order_type = (decision.get("order_type") or "limit").lower()
 
         # Deduplicate within the same cycle
         placed = context.setdefault("placed_orders", set())
@@ -495,19 +512,20 @@ Respond with valid JSON only.
         except Exception:
             key = None
 
-        # Skip if a matching open order already exists
-        open_orders = context.get("open_orders", {}) or {}
-        existing_orders = open_orders.get("orders", []) if isinstance(open_orders, dict) else []
-        for order in existing_orders:
-            try:
-                side = (order.get("side") or "").lower()
-                token = (order.get("token") or order.get("token_symbol") or "").upper()
-                target = float(order.get("target_price") or order.get("price_target_usd") or 0)
-                if side == action and token_symbol and token == token_symbol.upper() and abs(target - float(price_target)) < 1e-10:
-                    logger.info(f"Skipping duplicate order for {token_symbol} {action} at {price_target}")
-                    return
-            except Exception:
-                continue
+        # Skip if a matching open limit order already exists
+        if order_type == "limit":
+            open_orders = context.get("open_orders", {}) or {}
+            existing_orders = open_orders.get("orders", []) if isinstance(open_orders, dict) else []
+            for order in existing_orders:
+                try:
+                    side = (order.get("side") or "").lower()
+                    token = (order.get("token") or order.get("token_symbol") or "").upper()
+                    target = float(order.get("target_price") or order.get("price_target_usd") or 0)
+                    if side == action and token_symbol and token == token_symbol.upper() and abs(target - float(price_target)) < 1e-10:
+                        logger.info(f"Skipping duplicate order for {token_symbol} {action} at {price_target}")
+                        return
+                except Exception:
+                    continue
 
         # Prevent overspending in paper mode by reserving cash for pending buys
         if mode == "paper" and action == "buy":
@@ -556,24 +574,57 @@ Respond with valid JSON only.
 
         if mode == "paper":
             # Paper trading - create paper order
-            paper_order = await self.db.create_paper_order(
-                tg_user_id=tg_user_id,
-                action=action,
-                token_symbol=token_symbol,
-                token_address=token_address,
-                amount_usd=amount_usd,
-                price_target_usd=price_target,
-            )
-            action_doc["execution"] = {
-                "paper_order_id": paper_order.get("_id"),
-                "status": "pending",
-            }
+            if order_type == "swap":
+                exec_price = decision.get("execution_price_usd")
+                if not exec_price:
+                    exec_price = self._get_current_price_from_context(token_symbol, context) or price_target
+                if not exec_price:
+                    logger.info(f"Skipping swap: missing execution price for {token_symbol}")
+                    return
 
-            # Update reserved cash and placed orders for this cycle
-            if action == "buy":
-                context["reserved_cash_usd"] = float(context.get("reserved_cash_usd", 0) or 0) + float(amount_usd)
-            # already marked in placed_orders
-            
+                paper_order = await self.db.create_paper_order(
+                    tg_user_id=tg_user_id,
+                    action=action,
+                    token_symbol=token_symbol,
+                    token_address=token_address,
+                    amount_usd=amount_usd,
+                    price_target_usd=exec_price,
+                )
+                await self.db.fill_paper_order(paper_order.get("_id"), exec_price)
+                await self.db.update_paper_portfolio_on_fill(
+                    tg_user_id=tg_user_id,
+                    action=action,
+                    token_symbol=token_symbol,
+                    token_address=token_address,
+                    amount_usd=amount_usd,
+                    fill_price_usd=exec_price,
+                )
+                action_doc["execution"] = {
+                    "paper_order_id": paper_order.get("_id"),
+                    "status": "filled",
+                    "fill_price_usd": exec_price,
+                    "order_type": "swap",
+                }
+                # Update reserved cash only for pending limit buys; swaps fill immediately
+            else:
+                paper_order = await self.db.create_paper_order(
+                    tg_user_id=tg_user_id,
+                    action=action,
+                    token_symbol=token_symbol,
+                    token_address=token_address,
+                    amount_usd=amount_usd,
+                    price_target_usd=price_target,
+                )
+                action_doc["execution"] = {
+                    "paper_order_id": paper_order.get("_id"),
+                    "status": "pending",
+                    "order_type": "limit",
+                }
+
+                # Update reserved cash and placed orders for this cycle
+                if action == "buy":
+                    context["reserved_cash_usd"] = float(context.get("reserved_cash_usd", 0) or 0) + float(amount_usd)
+
             thoughts_line = ""
             if decisions_bundle.get("portfolio_summary") or decisions_bundle.get("market_outlook"):
                 thoughts_line = (
@@ -586,6 +637,7 @@ Respond with valid JSON only.
                 tg_user_id,
                 f"🤖 [PAPER] Order placed:\n"
                 f"{'📈 BUY' if action == 'buy' else '📉 SELL'} ${amount_usd:.2f} of {token_symbol}\n"
+                f"Order type: {order_type.upper()}\n"
                 f"Target price: ${price_target:.8f}\n"
                 f"Reasoning: {reasoning[:500]}..."
                 f"{thoughts_line}"
@@ -595,10 +647,13 @@ Respond with valid JSON only.
             user_id = f"telegram:{tg_user_id}"
             wallet_id = user.get("wallet_id")
             
-            if action == "buy":
-                order_prompt = f"Set limit order: buy ${amount_usd} of {token_symbol} at ${price_target} using wallet_id {wallet_id}"
+            if order_type == "swap":
+                order_prompt = f"Execute swap: {amount_usd} USD of {token_symbol} using wallet_id {wallet_id}"
             else:
-                order_prompt = f"Set limit order: sell ${amount_usd} of {token_symbol} at ${price_target} using wallet_id {wallet_id}"
+                if action == "buy":
+                    order_prompt = f"Set limit order: buy ${amount_usd} of {token_symbol} at ${price_target} using wallet_id {wallet_id}"
+                else:
+                    order_prompt = f"Set limit order: sell ${amount_usd} of {token_symbol} at ${price_target} using wallet_id {wallet_id}"
             
             try:
                 result = ""
@@ -608,6 +663,7 @@ Respond with valid JSON only.
                 action_doc["execution"] = {
                     "result": result,
                     "status": "submitted",
+                    "order_type": order_type,
                 }
 
                 thoughts_line = ""
@@ -622,6 +678,7 @@ Respond with valid JSON only.
                     tg_user_id,
                     f"🤖 [LIVE] Order submitted:\n"
                     f"{'📈 BUY' if action == 'buy' else '📉 SELL'} ${amount_usd:.2f} of {token_symbol}\n"
+                    f"Order type: {order_type.upper()}\n"
                     f"Target price: ${price_target:.8f}\n"
                     f"Reasoning: {reasoning[:500]}...\n\n"
                     f"{thoughts_line}\n\n"
