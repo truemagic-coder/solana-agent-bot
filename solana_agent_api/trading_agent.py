@@ -158,6 +158,7 @@ class TradingAgent:
         
         # Build the AI prompt
         prompt = self._build_trading_prompt(strategy_prompt, context, trading_mode)
+        prompt = f"[RESPOND_JSON_ONLY] {prompt}"
         
         # Get AI decision
         response = ""
@@ -352,6 +353,15 @@ Respond with valid JSON only.
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse AI response: {e}")
             logger.debug(f"Raw response: {response}")
+            # Try to extract JSON object from mixed content
+            try:
+                start = response.find("{")
+                end = response.rfind("}")
+                if start != -1 and end != -1 and end > start:
+                    snippet = response[start:end + 1]
+                    return json.loads(snippet)
+            except Exception as inner:
+                logger.error(f"Failed to recover JSON from AI response: {inner}")
             return None
 
     def _parse_json_response(self, response: str) -> dict:
