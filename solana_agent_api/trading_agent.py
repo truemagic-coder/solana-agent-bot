@@ -456,6 +456,20 @@ Respond with valid JSON only.
         amount_usd = decision.get("amount_usd", 0)
         price_target = decision.get("price_target_usd", 0)
         reasoning = decision.get("reasoning", "")
+
+        # Skip if a matching open order already exists
+        open_orders = context.get("open_orders", {}) or {}
+        existing_orders = open_orders.get("orders", []) if isinstance(open_orders, dict) else []
+        for order in existing_orders:
+            try:
+                side = (order.get("side") or "").lower()
+                token = (order.get("token") or order.get("token_symbol") or "").upper()
+                target = float(order.get("target_price") or order.get("price_target_usd") or 0)
+                if side == action and token_symbol and token == token_symbol.upper() and abs(target - float(price_target)) < 1e-10:
+                    logger.info(f"Skipping duplicate order for {token_symbol} {action} at {price_target}")
+                    return
+            except Exception:
+                continue
         
         # Validate minimum order size
         if amount_usd < 5:
