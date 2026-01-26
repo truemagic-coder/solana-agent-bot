@@ -5,7 +5,7 @@ Runs as a background task, executes trades based on AI analysis.
 import asyncio
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, List
 
 from .database import DatabaseService
@@ -102,7 +102,21 @@ class TradingAgent:
             except Exception as e:
                 logger.error(f"Trading cycle error: {e}", exc_info=True)
             
-            await asyncio.sleep(self.interval_seconds)
+            await self._sleep_until_next_interval()
+
+    async def _sleep_until_next_interval(self):
+        """Sleep until the next 15-minute wall-clock boundary."""
+        now = datetime.utcnow()
+        # Next quarter-hour boundary (00, 15, 30, 45)
+        minutes = (now.minute // 15) * 15
+        next_minute = minutes + 15
+        if next_minute >= 60:
+            next_time = now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+        else:
+            next_time = now.replace(minute=next_minute, second=0, microsecond=0)
+
+        sleep_seconds = max(0, (next_time - now).total_seconds())
+        await asyncio.sleep(sleep_seconds)
 
     async def _run_cycle(self):
         """Run one trading cycle for all enabled users."""
