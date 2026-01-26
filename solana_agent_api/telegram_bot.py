@@ -1650,6 +1650,16 @@ class TelegramBot:
             portfolio_summary = parsed.get("portfolio_summary", "(none)")
             market_outlook = parsed.get("market_outlook", "(none)")
 
+            raw_response = thought.get("raw_response", "") or ""
+            if (portfolio_summary == "(none)" and market_outlook == "(none)") and raw_response:
+                raw_response = raw_response.replace("```", "").strip()
+                raw_response = (raw_response[:400] + "...") if len(raw_response) > 400 else raw_response
+                blocks.append(
+                    f"<b>{ts}</b>\n"
+                    f"🧠 Raw: {raw_response}"
+                )
+                continue
+
             # Keep it short
             portfolio_summary = (portfolio_summary[:300] + "...") if len(portfolio_summary) > 300 else portfolio_summary
             market_outlook = (market_outlook[:300] + "...") if len(market_outlook) > 300 else market_outlook

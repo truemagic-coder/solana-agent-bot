@@ -172,6 +172,13 @@ class TradingAgent:
         # Parse AI response
         decisions = self._parse_ai_response(response)
 
+        # Ensure summaries exist for bot thoughts
+        if isinstance(decisions, dict):
+            if not decisions.get("portfolio_summary"):
+                decisions["portfolio_summary"] = self._build_portfolio_summary(context)
+            if not decisions.get("market_outlook"):
+                decisions["market_outlook"] = self._build_market_outlook(context)
+
         # Log AI thinking for this cycle (even if no actions)
         await self.db.log_bot_thoughts(
             tg_user_id=tg_user_id,
@@ -318,6 +325,28 @@ class TradingAgent:
             total += pos.get("current_value_usd", pos.get("amount", 0) * pos.get("entry_price_usd", 0))
         
         return total
+
+    def _build_portfolio_summary(self, context: dict) -> str:
+        """Build a short portfolio summary from context."""
+        value = context.get("portfolio_value_usd")
+        paper = context.get("paper_portfolio") or {}
+        positions = paper.get("positions", [])
+        if not positions:
+            return f"Portfolio value: ${value:.2f}" if isinstance(value, (int, float)) else "Portfolio empty"
+        top = sorted(positions, key=lambda p: p.get("current_value_usd", 0), reverse=True)[:3]
+        tokens = ", ".join([f"{p.get('token_symbol')} ${p.get('current_value_usd', 0):.2f}" for p in top])
+        return f"Portfolio value: ${value:.2f}. Top: {tokens}" if isinstance(value, (int, float)) else f"Top: {tokens}"
+
+    def _build_market_outlook(self, context: dict) -> str:
+        """Build a short market outlook from gems and TA."""
+        gems = (context.get("gems") or {}).get("gems", [])
+        if gems:
+            names = ", ".join([g.get("token") for g in gems[:3] if g.get("token")])
+            return f"Trending: {names}" if names else "Market data available"
+        ta = context.get("ta_results") or {}
+        if ta:
+            return "TA signals collected"
+        return "Market data unavailable"
 
     def _build_trading_prompt(self, strategy: str, context: dict, mode: str) -> str:
         """Build the complete trading prompt for AI."""
