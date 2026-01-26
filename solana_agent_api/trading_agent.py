@@ -298,11 +298,8 @@ class TradingAgent:
         async def _run_ta(token: str):
             try:
                 ta_prompt = (
-                    f"[RESPOND_JSON_ONLY] Run technical analysis on {token}. Return JSON: "
-                    f"{{\"symbol\": \"{token}\", \"price_usd\": ..., \"rsi\": ..., "
-                    f"\"macd_signal\": \"bullish/bearish/neutral\", \"trend\": \"up/down/sideways\", "
-                    f"\"support_usd\": ..., \"resistance_usd\": ..., \"recommendation\": "
-                    f"\"strong_buy/buy/hold/sell/strong_sell\", \"reasoning\": \"...\"}}"
+                    f"[RESPOND_JSON_ONLY] Run technical analysis on {token}. "
+                    "Return the full JSON output from the technical_analysis tool (do NOT summarize)."
                 )
                 ta_response = await _collect_response(ta_prompt)
                 ta_data = self._parse_json_response(ta_response)
@@ -379,6 +376,8 @@ TRENDING TOKENS (Gems):
 {json.dumps(context.get('gems'), indent=2, default=str)}
 
 Based on the above context and the user's strategy, analyze the situation and provide your trading decisions.
+Use the TA schema provided. For limit orders, anchor entries/exits to support_resistance.supports/resistances (arrays).
+If supports/resistances are missing or empty, do NOT place a limit order and choose HOLD.
 Remember: Only take action if there's a clear opportunity. HOLD is always a valid choice.
 Respond with valid JSON only.
 """

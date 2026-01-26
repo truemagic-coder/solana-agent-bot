@@ -934,7 +934,7 @@ class TelegramBot:
         if not args.strip():
             await event.reply("Usage: /ta <symbol or address> [timeframe]\n\nTimeframes: 1m, 5m, 15m, 30m, 1h, 2h, 4h, 8h, 1d\nDefault: 4h\n\nExample:\n/ta SOL\n/ta BONK 1h\n/ta DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263 1d")
             return
-        await self._process_agent_message(event, tg_user_id, f"[RESPOND IN ENGLISH] Run technical analysis on: {args.strip()}. Use the technical_analysis tool. If a symbol is given, first search for the token address. Interpret the raw values: RSI>70=overbought, RSI<30=oversold, MACD above signal=bullish, ADX>25=strong trend, price above EMAs=bullish structure. Show key indicators with interpretation. Always include the caution that this is NOT a buy/sell recommendation - NFA/DYOR.")
+        await self._process_agent_message(event, tg_user_id, f"[RESPOND IN ENGLISH] Run technical analysis on: {args.strip()}. Use the technical_analysis tool. If a symbol is given, first search for the token address. Present a clean TA card using the new schema: current price, 24h change %, market cap, liquidity; trend (EMAs/SMA, MACD, ADX, +DI/-DI); momentum (RSI, Stoch, CCI, Williams %R, ROC, MFI); volatility (Bollinger, ATR, Keltner); volume (OBV, volume SMA, VWAP); and support/resistance levels (list supports/resistances). Interpret the raw values: RSI>70=overbought, RSI<30=oversold, MACD above signal=bullish, ADX>25=strong trend, price above EMAs=bullish structure. Always include the caution that this is NOT a buy/sell recommendation - NFA/DYOR.")
 
     async def _handle_lookup(self, event, tg_user_id: int, args: str):
         """Handle /lookup command - lookup holdings of any wallet address."""
@@ -1664,7 +1664,10 @@ class TelegramBot:
             for token, data in ta_results.items():
                 if not isinstance(data, dict):
                     continue
-                if data.get("support_usd") is None or data.get("resistance_usd") is None:
+                support_resistance = data.get("support_resistance", {}) if isinstance(data, dict) else {}
+                supports = support_resistance.get("supports", []) if isinstance(support_resistance, dict) else []
+                resistances = support_resistance.get("resistances", []) if isinstance(support_resistance, dict) else []
+                if not supports or not resistances:
                     null_ta_tokens.append(token)
             null_ta_preview = ", ".join(null_ta_tokens[:3]) if null_ta_tokens else "none"
             ta_null_line = f"🧩 TA nulls: {null_ta_preview}"

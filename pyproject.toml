@@ -10,7 +10,7 @@ dependencies = [
     "gunicorn>=23.0.0",
     "python-dotenv>=1",
     "solana-agent>=33.1.1",
-    "sakit>=18.0.0",
+    "sakit>=18.0.1",
     "python-jose[cryptography]>=3.5.0",
     "websockets",
     "telethon==1.42.0",
