@@ -257,29 +257,25 @@ class TradingAgent:
             except Exception as e:
                 logger.error(f"Failed to get portfolio: {e}")
 
-        # Get open limit orders
-        try:
-            orders_response = ""
-            async for chunk in self.solana_agent.process(
-                user_id,
-                f"[RESPOND_JSON_ONLY] List all open limit orders for wallet_id {user.get('wallet_id')} and wallet_public_key {wallet_address}. Return JSON: {{\"orders\": [{{\"order_id\": \"...\", \"token\": \"...\", \"side\": \"buy/sell\", \"amount_usd\": ..., \"target_price\": ...}}]}}"
-            ):
-                orders_response += chunk
-            context["open_orders"] = self._parse_json_response(orders_response)
-        except Exception as e:
-            logger.error(f"Failed to get open orders: {e}")
+        async def _collect_response(prompt: str) -> str:
+            data = ""
+            async for chunk in self.solana_agent.process(user_id, prompt):
+                data += chunk
+            return data
 
-        # Get gems (trending tokens)
+        # Run open orders + gems in parallel
         try:
-            gems_response = ""
-            async for chunk in self.solana_agent.process(
-                user_id,
-                "[RESPOND_JSON_ONLY] Run /gems analysis. Return JSON with top trending tokens: {\"gems\": [{\"token\": \"...\", \"address\": \"...\", \"reason\": \"...\", \"risk_level\": \"low/medium/high\"}]}"
-            ):
-                gems_response += chunk
+            orders_prompt = f"[RESPOND_JSON_ONLY] List all open limit orders for wallet_id {user.get('wallet_id')} and wallet_public_key {wallet_address}. Return JSON: {{\"orders\": [{{\"order_id\": \"...\", \"token\": \"...\", \"side\": \"buy/sell\", \"amount_usd\": ..., \"target_price\": ...}}]}}"
+            gems_prompt = "[RESPOND_JSON_ONLY] Run /gems analysis. Return JSON with top trending tokens: {\"gems\": [{\"token\": \"...\", \"address\": \"...\", \"reason\": \"...\", \"risk_level\": \"low/medium/high\"}]}"
+
+            orders_task = asyncio.create_task(_collect_response(orders_prompt))
+            gems_task = asyncio.create_task(_collect_response(gems_prompt))
+
+            orders_response, gems_response = await asyncio.gather(orders_task, gems_task)
+            context["open_orders"] = self._parse_json_response(orders_response)
             context["gems"] = self._parse_json_response(gems_response)
         except Exception as e:
-            logger.error(f"Failed to get gems: {e}")
+            logger.error(f"Failed to get open orders or gems: {e}")
 
         # Get TA for portfolio tokens + watchlist
         tokens_to_analyze = set(watchlist)
@@ -299,19 +295,24 @@ class TradingAgent:
 
         tokens_to_analyze.discard("")  # Remove empty strings
         
-        for token in tokens_to_analyze:
+        async def _run_ta(token: str):
             try:
-                ta_response = ""
-                async for chunk in self.solana_agent.process(
-                    user_id,
-                    f"[RESPOND_JSON_ONLY] Run technical analysis on {token}. Return JSON: {{\"symbol\": \"{token}\", \"price_usd\": ..., \"rsi\": ..., \"macd_signal\": \"bullish/bearish/neutral\", \"trend\": \"up/down/sideways\", \"support_usd\": ..., \"resistance_usd\": ..., \"recommendation\": \"strong_buy/buy/hold/sell/strong_sell\", \"reasoning\": \"...\"}}"
-                ):
-                    ta_response += chunk
+                ta_prompt = (
+                    f"[RESPOND_JSON_ONLY] Run technical analysis on {token}. Return JSON: "
+                    f"{{\"symbol\": \"{token}\", \"price_usd\": ..., \"rsi\": ..., "
+                    f"\"macd_signal\": \"bullish/bearish/neutral\", \"trend\": \"up/down/sideways\", "
+                    f"\"support_usd\": ..., \"resistance_usd\": ..., \"recommendation\": "
+                    f"\"strong_buy/buy/hold/sell/strong_sell\", \"reasoning\": \"...\"}}"
+                )
+                ta_response = await _collect_response(ta_prompt)
                 ta_data = self._parse_json_response(ta_response)
                 if ta_data:
                     context["ta_results"][token] = ta_data
             except Exception as e:
                 logger.error(f"Failed to get TA for {token}: {e}")
+
+        if tokens_to_analyze:
+            await asyncio.gather(*[asyncio.create_task(_run_ta(token)) for token in tokens_to_analyze])
 
         return context
 

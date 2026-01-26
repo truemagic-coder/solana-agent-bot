@@ -613,7 +613,7 @@ class TelegramBot:
         elif command == '/botlog':
             await self._handle_bot_log(event, tg_user_id)
         elif command == '/botthoughts':
-            await self._handle_bot_thoughts(event, tg_user_id)
+            await self._handle_bot_thoughts(event, tg_user_id, args)
         else:
             # Treat unknown commands as regular messages
             await self._process_agent_message(event, tg_user_id, message_text)
@@ -1629,9 +1629,11 @@ class TelegramBot:
             parse_mode='html'
         )
 
-    async def _handle_bot_thoughts(self, event, tg_user_id: int):
+    async def _handle_bot_thoughts(self, event, tg_user_id: int, args: str = ""):
         """Handle /botthoughts command - show recent bot reasoning."""
-        thoughts = await self.db.get_user_bot_thoughts(tg_user_id, limit=5)
+        args_lower = (args or "").strip().lower()
+        full_mode = args_lower == "full"
+        thoughts = await self.db.get_user_bot_thoughts(tg_user_id, limit=2 if full_mode else 5)
 
         if not thoughts:
             await event.reply(
@@ -1651,12 +1653,49 @@ class TelegramBot:
             market_outlook = parsed.get("market_outlook", "(none)")
 
             raw_response = thought.get("raw_response", "") or ""
+            context_snapshot = thought.get("context_snapshot", {}) or {}
+            ta_results = context_snapshot.get("ta_results", {}) or {}
+            open_orders = context_snapshot.get("open_orders", {}) or {}
+            orders_count = 0
+            if isinstance(open_orders, dict):
+                orders_count = len(open_orders.get("orders", []) or [])
+
+            null_ta_tokens = []
+            for token, data in ta_results.items():
+                if not isinstance(data, dict):
+                    continue
+                if data.get("support_usd") is None or data.get("resistance_usd") is None:
+                    null_ta_tokens.append(token)
+            null_ta_preview = ", ".join(null_ta_tokens[:3]) if null_ta_tokens else "none"
+            ta_null_line = f"🧩 TA nulls: {null_ta_preview}"
+            orders_line = f"📦 Open orders: {orders_count}"
+
+            if full_mode:
+                raw_clean = raw_response.replace("```", "").strip()
+                raw_clean = (raw_clean[:1500] + "...") if len(raw_clean) > 1500 else raw_clean
+                ta_json = json.dumps(ta_results, indent=2, default=str)
+                ta_json = (ta_json[:1500] + "...") if len(ta_json) > 1500 else ta_json
+                orders_json = json.dumps(open_orders, indent=2, default=str)
+                orders_json = (orders_json[:800] + "...") if len(orders_json) > 800 else orders_json
+
+                blocks.append(
+                    f"<b>{ts}</b>\n"
+                    f"{orders_line}\n"
+                    f"{ta_null_line}\n\n"
+                    f"<b>RAW RESPONSE</b>\n{raw_clean}\n\n"
+                    f"<b>OPEN ORDERS</b>\n{orders_json}\n\n"
+                    f"<b>TA RESULTS</b>\n{ta_json}"
+                )
+                continue
+
             if (portfolio_summary == "(none)" and market_outlook == "(none)") and raw_response:
                 raw_response = raw_response.replace("```", "").strip()
                 raw_response = (raw_response[:400] + "...") if len(raw_response) > 400 else raw_response
                 blocks.append(
                     f"<b>{ts}</b>\n"
-                    f"🧠 Raw: {raw_response}"
+                    f"🧠 Raw: {raw_response}\n"
+                    f"{orders_line}\n"
+                    f"{ta_null_line}"
                 )
                 continue
 
@@ -1667,11 +1706,14 @@ class TelegramBot:
             blocks.append(
                 f"<b>{ts}</b>\n"
                 f"📊 Portfolio: {portfolio_summary}\n"
-                f"🌐 Market: {market_outlook}"
+                f"🌐 Market: {market_outlook}\n"
+                f"{orders_line}\n"
+                f"{ta_null_line}"
             )
 
+        header = "🧠 <b>Bot Thoughts (Full)</b>" if full_mode else "🧠 <b>Bot Thoughts (Recent)</b>"
         await event.reply(
-            "🧠 <b>Bot Thoughts (Recent)</b>\n\n" + "\n\n".join(blocks),
+            header + "\n\n" + "\n\n".join(blocks),
             parse_mode='html'
         )
 
