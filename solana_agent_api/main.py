@@ -24,9 +24,6 @@ config = {
         "connection_string": app_config.MONGO_URL,
         "database": app_config.MONGO_DB,
     },
-    "logfire": {
-        "api_key": app_config.LOGFIRE_API_KEY,
-    },
     "tools": {
         "birdeye": {
             "api_key": app_config.BIRDEYE_API_KEY, # Required - your Birdeye API key for market data
