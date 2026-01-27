@@ -16,9 +16,11 @@ from .trading_agent import TradingAgent
 from solana_agent import SolanaAgent
 
 config = {
-    "groq": {
-        "api_key": app_config.GROQ_API_KEY,
-        "model": "openai/gpt-oss-120b",
+    "openai": {
+        "api_key": app_config.OPENAI_API_KEY,
+    },
+    "logfire": {
+        "api_key": app_config.LOGFIRE_API_KEY,
     },
     "mongo": {
         "connection_string": app_config.MONGO_URL,
