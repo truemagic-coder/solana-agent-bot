@@ -891,6 +891,8 @@ class TelegramBot:
         clean_json = response.replace('```json', '').replace('```', '').strip()
         
         try:
+            if not clean_json:
+                raise ValueError("Empty wallet response")
             data = json.loads(clean_json)
             wallet_address = data.get('wallet_address') or wallet_address_from_db
             portfolio_text = data.get('portfolio_text', response)
@@ -911,10 +913,15 @@ class TelegramBot:
                 except Exception as e:
                     logger.error(f"Failed to store wallet for {tg_user_id}: {e}")
             
+            if not portfolio_text:
+                raise ValueError("Empty portfolio_text")
             await self._send_long_message(event, portfolio_text)
         except (json.JSONDecodeError, ValueError) as e:
             logger.error(f"Failed to parse wallet response for {tg_user_id}: {e}")
-            await self._send_long_message(event, response)
+            if response.strip():
+                await self._send_long_message(event, response)
+            else:
+                await event.reply("Sorry, I couldn't load your wallet right now. Please try again.")
     
     async def _handle_orders(self, event, tg_user_id: int):
         """Handle /orders command - ask agent to list limit orders."""
@@ -2074,6 +2081,9 @@ class TelegramBot:
     
     async def _send_long_message(self, event, text: str):
         """Send a message, splitting if too long."""
+        if not text:
+            await event.reply("Sorry, something went wrong. Please try again.")
+            return
         # Convert markdown to HTML
         text = self._convert_markdown_to_html(text)
         
