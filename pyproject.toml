@@ -9,7 +9,7 @@ dependencies = [
     "uvicorn[standard]>=0.40.0",
     "gunicorn>=23.0.0",
     "python-dotenv>=1",
-    "solana-agent>=33.1.1",
+    "solana-agent>=33.2.0",
     "sakit>=18.0.1",
     "python-jose[cryptography]>=3.5.0",
     "websockets",
